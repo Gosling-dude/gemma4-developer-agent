@@ -2,7 +2,7 @@
 
 Usage (args is a list of strings):
   tests.py related PATH_OR_SYMBOL [...]   test files/functions most related to a source file or symbol
-  tests.py run TARGET [TARGET ...] [-k EXPR] [--timeout S]
+  tests.py run TARGET [TARGET ...] [-k EXPR] [--timeout S]   (default 90 s)
                                           run pytest on the targets and print a condensed report
   tests.py info                           test framework, config and how tests are laid out
 
@@ -148,7 +148,7 @@ def condense(output):
 
 
 def cmd_run(args):
-    targets, extra, timeout = [], [], 240
+    targets, extra, timeout = [], [], 90  # the whole task budget is ~270 s
     i = 0
     while i < len(args):
         a = args[i]

@@ -7,6 +7,8 @@ files the reference patch edits (recall@k: is any gold file in the top k?).
 Strategies:
   grep_count    raw hit counts of the terms (naive baseline, like `git grep -c`)
   nav_find      skills/repo-navigation/scripts/nav.py find (idf weighting + definition boost)
+  nav_callees   nav_find's top file, then files reached by 1-2 hops of `calls` edges out of the issue's named
+                symbols (the graph-reasoning move the prompt recommends), then the rest of nav_find
   nav_graph     nav_find, then 1-hop graph expansion (callers/callees/contains) of the top-3 files' defined
                 symbols, adding neighbour files with a decayed score
   similar       search_similar_code on each term that resolves to a graph node (embedding neighbours)
@@ -42,8 +44,29 @@ parameter default option options new old instead also like just only same differ
 most recent call last""".split())
 
 
+_BOX = re.compile(r"[\u2500-\u257f]")
+_KV_DUMP = re.compile(r"^\s*[\w.\-]+\s*[=:]\s*[^\s].{0,60}$")
+_ENV_HINT = re.compile(r"(python -m \S+\.diagnose|pip (freeze|list)|platform|version|environment|os:|terminal)", re.I)
+
+
+def strip_environment_dump(text: str) -> str:
+    """Drop issue-template environment reports (box-drawn diagnostics, key=value dumps, version lines)."""
+    keep = []
+    for line in text.splitlines():
+        if _BOX.search(line) or _KV_DUMP.match(line) or (_ENV_HINT.search(line) and len(line) < 100):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
+FILTERS = {"env", "urls"}  # which noise filters extract_terms applies (ablation switch)
+_URLISH = re.compile(r"(readthedocs|github|\.(io|com|org|html?|md|rst|txt)$)", re.I)
+
+
 def extract_terms(text: str, limit: int = 6) -> list[str]:
     """Pick specific identifiers from issue text: code spans, tracebacks, Camel/snake/dotted names."""
+    if "env" in FILTERS:
+        text = strip_environment_dump(text)
     cands: dict[str, float] = defaultdict(float)
     for span in re.findall(r"`([^`\n]{2,60})`", text):
         for ident in re.findall(r"[A-Za-z_][\w.]*", span):
@@ -61,7 +84,8 @@ def extract_terms(text: str, limit: int = 6) -> list[str]:
         base = term.split(".")[-1]
         dotted = "." in term
         if (not dotted and (base.lower() in STOP or len(base) < 4)) or term.lower() in STOP \
-                or term.startswith(("http", "www")) or base.isdigit() or term.endswith((".py", ".com", ".org")):
+                or term.startswith(("http", "www")) or base.isdigit() or term.endswith((".py", ".com", ".org")) \
+                or ("urls" in FILTERS and _URLISH.search(term)):
             continue
         if any(term == o or term in o.split(".") for o in out):
             continue
@@ -122,6 +146,35 @@ def nav_graph(ranked: list[str], scores: dict[str, float], graph: CodeGraph) -> 
     return [p for p, _ in sorted(new.items(), key=lambda kv: -kv[1])]
 
 
+def nav_callees(ranked: list[str], terms: list[str], graph: CodeGraph, hops: int = 2) -> list[str]:
+    """Keep nav's top file, then files reached by following `calls` edges out of the issue's named symbols."""
+    file_of = {nid: n.get("file") for nid, n in graph.nodes.items() if n.get("file")}
+    scores: dict[str, float] = defaultdict(float)
+    for i, t in enumerate(terms):
+        rid = graph.resolve(t)
+        if not rid or rid.count(".") < 1 or rid not in file_of:
+            continue
+        frontier, seen = [rid], {rid}
+        for hop in range(1, hops + 1):
+            nxt = []
+            for nid in frontier:
+                for e in graph.out.get(nid, []):
+                    if e["type"] != "calls" or e["target"] in seen:
+                        continue
+                    seen.add(e["target"])
+                    nxt.append(e["target"])
+                    f = file_of.get(e["target"])
+                    if f and not is_protected(f):
+                        scores[f] += 1.0 / (hop * (1 + 0.3 * i))
+            frontier = nxt
+    callee_files = [p for p, _ in sorted(scores.items(), key=lambda kv: -kv[1])]
+    out = ranked[:1]
+    for p in callee_files + ranked[1:]:
+        if p not in out:
+            out.append(p)
+    return out
+
+
 def similar(terms: list[str], graph: CodeGraph) -> list[str]:
     scores: dict[str, float] = defaultdict(float)
     for t in terms:
@@ -145,7 +198,7 @@ def recall(ranked: list[str], gold: set[str], k: int) -> int:
 def evaluate(tasks: list[Task], data_dir: Path | None) -> dict:
     per_task = []
     ks = (1, 3, 5)
-    strategies = ("grep_count", "nav_find", "nav_graph", "similar")
+    strategies = ("grep_count", "nav_find", "nav_graph", "nav_callees", "similar")
     for task in tasks:
         gold = {f for f in patch_files(task.patch) if f.endswith(".py") and not is_protected(f)}
         with tempfile.TemporaryDirectory() as td:
@@ -161,6 +214,7 @@ def evaluate(tasks: list[Task], data_dir: Path | None) -> dict:
                 "grep_count": grep_count(ws, terms),
                 "nav_find": ranked_nav,
                 "nav_graph": nav_graph(ranked_nav, scores, graph),
+                "nav_callees": nav_callees(ranked_nav, terms, graph),
                 "similar": similar(terms, graph),
             }
         row = {"instance_id": task.instance_id, "gold": sorted(gold), "terms": terms, "graph": gsrc,
@@ -176,13 +230,22 @@ def evaluate(tasks: list[Task], data_dir: Path | None) -> dict:
     return {"n": len(per_task), "summary": summary, "per_task": per_task}
 
 
+def _sha(p: Path) -> str:
+    import hashlib
+    return hashlib.sha256(p.read_bytes()).hexdigest()[:12]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tasks", type=Path, default=PROJECT / "evaluations" / "cases" / "tasks.jsonl")
     ap.add_argument("--data-dir", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=PROJECT / "evaluations" / "analysis" / "localization.json")
+    ap.add_argument("--filters", default="env,urls", help="term-extraction noise filters: env,urls or none")
     args = ap.parse_args(argv)
+    FILTERS.clear()
+    FILTERS.update(f for f in args.filters.split(",") if f and f != "none")
     res = evaluate(load_tasks(args.tasks), args.data_dir)
+    res["config"] = {"filters": sorted(FILTERS), "nav_sha": _sha(NAV)}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(res, indent=2))
     print(json.dumps(res["summary"], indent=2))

@@ -88,38 +88,62 @@ def cmd_find(terms):
     defs = []
     test_scores = defaultdict(float)
     term_stats = []
-    for term in terms:
+    def_names_used = set()
+    for i, term in enumerate(terms):
         hits = grep_fixed(term)
         # A dotted name also counts as its last component, e.g. "Response.json" -> "json".
         short = term.split(".")[-1] if "." in term and " " not in term else None
         if not hits and short:
             hits = grep_fixed(short)
+        hits = {p: l for p, l in hits.items() if not any(p.startswith(d) for d in SKIP_DIRS)}
         df = len(hits)
         term_stats.append(f"{term}:{df}")
         if df == 0:
             continue
         idf = math.log(1 + n_files / df)
-        name = (short or term)
-        def_re = re.compile(DEF_RE.format(name=re.escape(name))) if re.match(r"^[A-Za-z_]\w*$", name) else None
+        order_w = 1.0 / (1 + 0.3 * i)  # earlier terms are the more specific ones
+        name = short or term
+        def_re = None
+        if re.match(r"^[A-Za-z_]\w*$", name) and name not in def_names_used:
+            def_names_used.add(name)
+            def_re = re.compile(DEF_RE.format(name=re.escape(name)))
+        def_files = set()
         for path, lines in hits.items():
-            if any(path.startswith(d) for d in SKIP_DIRS):
-                continue
-            is_def = False
             for ln, text in lines:
                 if def_re and def_re.match(text):
-                    is_def = True
+                    def_files.add(path)
                     defs.append(f"{path}:{ln}: {text[:110]}")
-            s = idf * (1 + math.log(len(lines))) + (4 * idf if is_def else 0)
+        src_defs = [p for p in def_files if not is_test(p)] or list(def_files)
+        for path, lines in hits.items():
+            # Capped mention score; a definition counts more the fewer places define the name.
+            s = idf * min(1 + math.log(len(lines)), 3.0)
+            if path in def_files:
+                s += 8 * idf / len(src_defs)
+            s *= order_w
             if is_test(path):
                 test_scores[path] += s
             else:
                 scores[path] += s
                 if len(evidence[path]) < 4:
                     evidence[path].extend(lines[: 4 - len(evidence[path])])
+    # A dotted term naming a module ("pkg.sub.mod") points straight at its file.
+    tracked = set(all_files)
+    for i, term in enumerate(terms):
+        if "." not in term or " " in term:
+            continue
+        parts = term.split(".")
+        for k in range(len(parts), 1, -1):
+            base = "/".join(parts[:k])
+            hit = next((c for c in (f"{base}.py", f"{base}/__init__.py", f"src/{base}.py", f"src/{base}/__init__.py")
+                        if c in tracked and not is_test(c)), None)
+            if hit:
+                scores[hit] += 6.0 / (1 + 0.3 * i)
+                evidence[hit] = evidence[hit] or [(0, f"module named in issue: {term}")]
+                break
     emit("term document-frequency (files containing it): " + ", ".join(term_stats))
     if defs:
         emit("\nDEFINITIONS:")
-        for d in defs[:12]:
+        for d in sorted(dict.fromkeys(defs), key=lambda d: is_test(d.split(":", 1)[0]))[:12]:
             emit("  " + d)
     ranked = sorted(scores.items(), key=lambda kv: -kv[1])[:8]
     emit("\nTOP SOURCE FILES (score, path, sample lines):")

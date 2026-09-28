@@ -57,7 +57,7 @@ def show_context(rel, lineno, func, radius=4):
         emit(f"{mark}{i:5d}| {lines[i - 1]}")
 
 
-def run(cmd, shell=False, timeout=180):
+def run(cmd, shell=False, timeout=60):
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
         r = subprocess.run(cmd, cwd=WS, capture_output=True, text=True, timeout=timeout, shell=shell, env=env,

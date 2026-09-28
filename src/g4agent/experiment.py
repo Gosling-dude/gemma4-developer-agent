@@ -11,6 +11,7 @@ Agents:
   --agent adk     the packaged YAML via google-adk + an OpenAI-compatible endpoint ($G4_MODEL, ...)
   --agent oracle  applies the reference patch through the harness tools (pipeline self-test, no model)
   --agent noop    submits nothing (baseline check: every task must fail)
+  --agent tests_only  submits only the test changes (anti-tampering check: every task must fail)
 
 Usage:
   python -m g4agent.experiment --exp-id E001 --variant v0 --agent adk --tasks evaluations/cases/tasks.jsonl
@@ -67,11 +68,11 @@ def graph_for(task: Task, workspace: Path, data_dir: Path | None) -> tuple[CodeG
     return g, "ast-approx"
 
 
-def oracle_agent(task: Task, harness: LocalHarness) -> None:
+def oracle_agent(task: Task, harness: LocalHarness, patch: str | None = None) -> None:
     """Apply the gold patch through run_command + submit_patch, exercising extraction end to end."""
     fns = harness.tool_functions()
     pf = harness.tmp_dir / "gold.patch"
-    pf.write_text(task.patch)
+    pf.write_text(task.patch if patch is None else patch)
     fns["run_command"]("git apply /tmp/gold.patch")
     fns["submit_patch"]()
 
@@ -138,6 +139,8 @@ def run_one(task: Task, agent: str, submission: Path, budget: Budget, data_dir: 
             harness.start()
             if agent == "oracle":
                 oracle_agent(task, harness)
+            elif agent == "tests_only":
+                oracle_agent(task, harness, task.test_patch)
             patch = harness.submitted_patch if harness.patch_submitted else harness.extract_patch()
             rec.update(stop_reason="submitted" if harness.patch_submitted else "noop",
                        tool_calls=harness.tool_calls_used, tool_log=harness.calls, seconds=round(harness.elapsed(), 1))
@@ -154,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exp-id", required=True)
     ap.add_argument("--variant", default=None)
-    ap.add_argument("--agent", choices=("adk", "oracle", "noop"), default="adk")
+    ap.add_argument("--agent", choices=("adk", "oracle", "noop", "tests_only"), default="adk")
     ap.add_argument("--tasks", type=Path, default=PROJECT / "evaluations" / "cases" / "tasks.jsonl")
     ap.add_argument("--data-dir", type=Path, default=None, help="official competition data directory")
     ap.add_argument("--only", nargs="*", default=None)

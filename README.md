@@ -91,7 +91,15 @@ files reachable from that `agent.yaml`.
 ## Results
 See [docs/experiments.md](docs/experiments.md) for the full log. Labels: VERIFIED / EXPERIMENTAL / INFERRED / TODO.
 
-EXPERIMENT_RESULTS_PLACEHOLDER
+| What | Result | Label |
+|---|---|---|
+| Grading sanity: empty patch / test-only patch / reference patch through the tools, on 12 execution-verified `rich` cases | 0/12, 0/12, **12/12** (as expected) | VERIFIED |
+| Test suite (validator, packager, tools, skills, ADK end-to-end with a scripted model) | 48/48 pass | VERIFIED |
+| All 4 variants package, validate and compile with google-adk 1.36.1 | valid | VERIFIED |
+| Localization recall@1 of `nav.py find` vs naive grep (same terms) | **0.50 vs 0.08** | EXPERIMENTAL (n=12) |
+| Localization recall@3: nav alone vs + graph callee-following + similarity search | 7/12 → **9/12** | EXPERIMENTAL (n=12, approximate graph) |
+| Resolution rate of V0 / V1 / V2 with Gemma 4 | **not measured** (no model endpoint available) | TODO |
+| Kaggle leaderboard score | **none** (nothing submitted) | TODO |
 
 ## Reproducing
 ```bash
