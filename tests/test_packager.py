@@ -7,7 +7,7 @@ import pytest
 from g4agent.packager import package
 
 
-@pytest.mark.parametrize("variant", [None, "v0", "v1_nograph", "v2"])
+@pytest.mark.parametrize("variant", [None, "v0", "v1_baseline", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2"])
 def test_every_variant_packages(tmp_path: Path, variant):
     out = tmp_path / "s.zip"
     assert package(variant, out, compile_adk=True) == 0
@@ -15,6 +15,15 @@ def test_every_variant_packages(tmp_path: Path, variant):
     assert "agent.yaml" in names
     assert not any(n.startswith(("src/", "tests/", "docs/", "variants/")) for n in names)
     assert not any("__pycache__" in n or "/." in n for n in names)
+
+
+@pytest.mark.parametrize("variant", [None, "v0", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2"])
+def test_variant_prompts_only_reference_available_tools(tmp_path: Path, variant):
+    from g4agent.validator import validate_zip
+    out = tmp_path / "s.zip"
+    assert package(variant, out, compile_adk=False) == 0
+    warns = [w for w in validate_zip(out).warnings if "instruction mentions" in w or "instruction uses skill" in w]
+    assert warns == []
 
 
 def test_package_is_deterministic_and_minimal(tmp_path: Path):

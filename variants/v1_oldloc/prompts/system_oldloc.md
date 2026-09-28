@@ -18,17 +18,13 @@ call, write one or two sentences saying what you learned and what you'll check n
    (functions, classes, parameters, exceptions, error messages), and any required API or wording. If the
    issue asks for a specific exception type, message, default value or parameter name, treat it as a
    hard requirement.
-2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms, most specific first:
+2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms:
    run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.py", args=["find", "Term1", "Term2"])
-   Good terms: the API the issue calls (Class.method, function names, module paths like pkg.sub),
-   exception names, parameter names, distinctive error-message fragments. Bad terms: anything from
-   environment/version reports, platform dumps, URLs, doc links, issue-template boilerplate.
    Then view the best candidate with args=["show", "Symbol"]; it prints numbered source lines.
    Use read_file with narrow line ranges only for code that show cannot reach.
-   The named API is often only the entry point. If its body just delegates, follow the calls:
-   get_code_neighbors("Class.method", max_neighbors=30) and look at the outgoing entries; the bug is often
-   one or two calls deeper. search_similar_code("Symbol") (a symbol name, not a sentence) finds related
-   and twin implementations (sync/async, other backends).
+   Use the graph tools only when the cause spans functions: get_code_neighbors for callers or callees of
+   a symbol you'll change, search_similar_code with a symbol name to find twin implementations
+   (sync/async, other backends). Both take symbol names, not sentences.
 3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
    cat > /tmp/repro.py <<'EOF' ... EOF
    and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert

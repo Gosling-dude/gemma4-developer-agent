@@ -197,10 +197,10 @@ CELL_TRACES = r'''
 # Condense official traces: tool usage, files read, commands run (for failure analysis offline).
 def walk(o, acc):
     if isinstance(o, dict):
-        name = o.get('function_name') or o.get('name') or o.get('tool_name')
-        args = o.get('arguments') or o.get('args') or o.get('function_arguments')
-        if isinstance(name, str) and isinstance(args, (dict, str)):
-            acc.append({'tool': name, 'args': args if isinstance(args, dict) else str(args)[:300]})
+        if isinstance(o.get('function_name'), str):  # ATIF step.tool_calls[] entry
+            args = o.get('arguments')
+            acc.append({'tool': o['function_name'], 'args': args if isinstance(args, dict) else str(args)[:300],
+                        'elapsed_s': (o.get('extra') or {}).get('elapsed_s')})
         for v in o.values(): walk(v, acc)
     elif isinstance(o, list):
         for v in o: walk(v, acc)

@@ -25,10 +25,9 @@ call, write one or two sentences saying what you learned and what you'll check n
    environment/version reports, platform dumps, URLs, doc links, issue-template boilerplate.
    Then view the best candidate with args=["show", "Symbol"]; it prints numbered source lines.
    Use read_file with narrow line ranges only for code that show cannot reach.
-   The named API is often only the entry point. If its body just delegates, follow the calls:
-   get_code_neighbors("Class.method", max_neighbors=30) and look at the outgoing entries; the bug is often
-   one or two calls deeper. search_similar_code("Symbol") (a symbol name, not a sentence) finds related
-   and twin implementations (sync/async, other backends).
+   The named API is often only the entry point. If its body just delegates, follow the calls with
+   args=["show", "CalleeName"]; the bug is often one or two calls deeper. args=["usages", "Symbol"] finds
+   related and twin implementations (sync/async, other backends).
 3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
    cat > /tmp/repro.py <<'EOF' ... EOF
    and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert

@@ -1,27 +1,29 @@
 # LoRA track
 
-**Status: not attempted (by design, as of 2026-09-28).** No adapter ships. No training results exist,
-and none are claimed.
+## Decision (2026-09-28): **LoRA is currently not justified.**
 
-## Why not yet
-1. The priority order puts LoRA last. A LoRA only pays off once prompt, tools and skills are measured,
-   and those measurements need a model endpoint (see the TODO in docs/experiments.md).
-2. Training needs a GPU that can hold `gemma-4-31b-it-qat-w4a16-ct` for QLoRA-style training
-   (≥ 1× 80 GB, or 2× 48 GB). This machine is an Apple M5 laptop with 16 GB RAM and no CUDA.
-3. The data (successful agent trajectories) doesn't exist yet. It comes from running V1 on the
-   129 public tasks.
+Reasons, strongest first:
+1. **Adapters currently have no effect on the scorer, or fail it.** The patched vLLM 0.19.1 in the official
+   wheelhouse registers every Gemma 4 decoder layer twice, and activating an adapter resets its weights to zero,
+   so outputs are identical to the base model (discussion 743508, with a repro; the host replied "I will address").
+   The official `sample_submission`, which ships two adapters, failed when submitted as-is (743213). Until the
+   host confirms a fix, any adapter costs 0–3 GiB of upload for no effect, or risks a failed submission.
+2. **No real-Gemma baseline exists yet**, so there's nothing to measure an adapter against and no trajectories to train on.
+3. **No training hardware here** (Apple M5, 16 GB, no CUDA). QLoRA on a 31B model needs roughly ≥ 48–80 GB of GPU memory.
 
-## Plan once the prerequisites exist
+No adapter is shipped and no training was run; no training results are claimed.
+
+## Revisit when all of these hold
+- The host confirms that adapters load and affect outputs (e.g. the logprob-difference repro in 743508 passes).
+- A real V1.x baseline exists on ≥ 30 official public tasks, with run-to-run noise measured over 3 seeds.
+- ≥ 100 successful trajectories (Phase-2 resolved) are available from V1.x runs.
+
+## Plan at that point
 | Item | Choice | Rationale |
 |---|---|---|
-| Data | Trajectories from V1 (or a stronger teacher) on public tasks whose patch **resolves** in Phase 2; one example per assistant turn, trained only on assistant tokens (thought + tool call) | Teaches the tool-call format and the workflow; rejection sampling keeps only verified successes |
-| Hold-out | Split by repository (e.g. hold out `httpx`) | The hidden test set uses **private repos**, so random splits overestimate |
-| Target modules | q,k,v,o,gate,up,down proj | HARNESS_README sizing table |
-| Rank / alpha / dropout | r=16, alpha=32, dropout=0.05 | ~110–220 MB, well within the 3 GiB limit and `max_lora_rank=128` |
-| Steps | 1–2 epochs, lr 1e-4 cosine, max seq 16k | Small data; avoid overfitting to 4 repos |
-| Format | PEFT `adapter_config.json` + `adapter_model.safetensors` (validator enforces) | Harness requirement |
-| Success criterion | Resolution rate on the held-out repo better than V1 by more than the run-to-run noise (measure noise with 3 seeds of V1 first) | Avoids shipping noise |
-
-Base-weight compatibility (INFERRED risk): the adapter has to be trained against the same QAT
-checkpoint that vLLM serves. Training on the bf16 `gemma-4-31b-it` and serving on the W4A16 model may shift
-behaviour. Validate on the served model.
+| Data | Assistant turns of **resolved** V1.x trajectories on public tasks; loss on assistant tokens only | Rejection sampling teaches tool-call format and workflow |
+| Split | Hold out by repository | The hidden set comes from private repos |
+| Base weights | The **served** checkpoint (`gemma-4-31b-it-qat-w4a16-ct`) or a verified-compatible bf16 base | The adapter must match what vLLM serves |
+| Targets / rank | q,k,v,o,gate,up,down; r=16, alpha=32, dropout 0.05 | ~110–220 MB (HARNESS_README table); rank ≤ 128 |
+| Format | PEFT `adapter_config.json` + `adapter_model.safetensors` (validator enforces) | Harness rule |
+| Ship only if | Held-out resolution beats V1.x by more than the seed noise | Avoid shipping noise |

@@ -19,19 +19,19 @@ call, write one or two sentences saying what you learned and what you'll check n
    issue asks for a specific exception type, message, default value or parameter name, treat it as a
    hard requirement.
 2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms, most specific first:
-   run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.py", args=["find", "Term1", "Term2"])
+   run_command("cd /workspace && git grep -n -e 'Term1' -e 'Term2' -- '*.py' | head -40")
    Good terms: the API the issue calls (Class.method, function names, module paths like pkg.sub),
    exception names, parameter names, distinctive error-message fragments. Bad terms: anything from
    environment/version reports, platform dumps, URLs, doc links, issue-template boilerplate.
-   Then view the best candidate with args=["show", "Symbol"]; it prints numbered source lines.
-   Use read_file with narrow line ranges only for code that show cannot reach.
+   Then read the best candidate definition with read_file and a narrow line range (find the line with
+   git grep -n "def Symbol").
    The named API is often only the entry point. If its body just delegates, follow the calls:
    get_code_neighbors("Class.method", max_neighbors=30) and look at the outgoing entries; the bug is often
    one or two calls deeper. search_similar_code("Symbol") (a symbol name, not a sentence) finds related
    and twin implementations (sync/async, other backends).
 3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
    cat > /tmp/repro.py <<'EOF' ... EOF
-   and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert
+   and run it: run_command("cd /workspace && python /tmp/repro.py"). The script should print or assert
    the behaviour the issue describes. This confirms the root cause and later confirms the fix.
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
 5. EDIT. Make the smallest change that implements the rule behind the issue, not a special case for the
@@ -39,12 +39,12 @@ call, write one or two sentences saying what you learned and what you'll check n
    Keep edits small; split large changes into several edit_file calls. Match the file's style.
    Update every twin implementation the issue implies.
 6. VERIFY (2–4 calls). Rerun the repro. Then run the most related existing tests:
-   run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["related", "path/or/Symbol"])
-   run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["run", "tests/test_x.py"])
+   run_command("cd /workspace && git grep -l 'Symbol' -- tests | head")
+   run_command("cd /workspace && python -m pytest -q -x tests/test_x.py 2>&1 | tail -40")
    If a test fails, decide from the failure output whether your change caused it (compare with
    git stash if unsure), fix the cause, and rerun. Don't start more than 3 repair rounds on one hypothesis.
-7. REVIEW (1 call). run_skill_script(skill_name="debugging", file_path="scripts/review.py", args=[])
-   Fix every PROBLEM it reports (delete stray files, revert edits to protected files).
+7. REVIEW (1 call). run_command("cd /workspace && git status --short && git diff")
+   Delete stray files in /workspace, revert edits to tests or runner config, remove debug prints.
 8. SUBMIT. Call submit_patch, then answer with a two-line summary and no further tool calls.
 
 # Budget discipline
@@ -54,8 +54,6 @@ call, write one or two sentences saying what you learned and what you'll check n
 - Never repeat an identical tool call. If a call returned nothing useful (e.g. git grep exit code 1 means
   "no match"), change the query, the file or the approach. Two failed variants of the same idea: move on.
 - If a command times out, don't repeat it unchanged; narrow it.
-- The skill instructions are fully summarized here; you don't need load_skill. If run_skill_script
-  fails, don't retry it. Use plain run_command equivalents (git grep -n, python -m pytest -q path).
 
 # Quality bar for the patch
 - It fixes the reported behaviour in the public API the issue names, for all inputs the issue implies.

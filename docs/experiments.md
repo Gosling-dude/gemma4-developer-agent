@@ -1,5 +1,21 @@
 # Experiment log
 
+## Canonical score table (the ONLY place scores are summarized)
+No row below is a Gemma 4 result or a Kaggle score. The "Model" column says exactly what produced the patch.
+
+| Version | Model / patch source | Harness | Tasks | Resolved | Score | Runtime | Status |
+|---|---|---|---:|---:|---:|---|---|
+| (grading control) | empty patch | local re-impl (E000) | 12 | 0 | 0.00 | – | VERIFIED |
+| (grading control) | empty patch | **official swegemma 0.2.7** (E004) | 12 | 0 | 0.00 | ~2 s/task | VERIFIED |
+| (grading control) | test-only patch | local re-impl (E002) | 12 | 0 | 0.00 | – | VERIFIED |
+| (grading control) | reference patch via tools (oracle) | local re-impl (E001) | 12 | 12 | 1.00 | – | VERIFIED |
+| (grading control) | reference patch | **official swegemma 0.2.7** (E003) | 12 | 12 | 1.00 | 1.8–4.0 s/task | VERIFIED |
+| V1 (pre-fix skills) | scripted fake model | official, subprocess sandbox | 1 | 1* | – | 4.4 s | VERIFIED pipeline test; *resolved only because the scripted edit was correct: the skills saw an empty dir (bug) |
+| V1.1 | scripted fake model | official, subprocess sandbox (E005/E006) | 1 | 1 | – | 3.9 s | VERIFIED pipeline test (no model quality measured) |
+| V0 | **real Gemma 4** | official | – | – | – | – | TODO (blocked: no GPU/endpoint/credentials) |
+| V1.1 | **real Gemma 4** | official | – | – | – | – | TODO (blocked) |
+| any | **Kaggle leaderboard** | – | – | – | – | – | **none: nothing submitted** |
+
 Labels: **VERIFIED** = measured here, reproducible with the command given. **EXPERIMENTAL** = measured, but on a
 small or proxy setup that may not transfer. **INFERRED** = reasoning without measurement. **TODO** = not run yet.
 
@@ -22,6 +38,21 @@ scanned 30+ PRs and rejected most for having no linked issue text, a reference f
 | E002-testsonly | Test-only patch (the `test_patch` submitted as the fix; the anti-tampering reset must discard it) | **0 / 12 resolved** | `scripts/run_experiment.sh --exp-id E002-testsonly --agent tests_only` |
 | T001 | Unit and integration tests: validator rules, packager determinism, 9 tools' contracts, skill scripts, **full ADK run of the packaged V1 YAML with a scripted model** (SkillToolset → run_skill_script → sandbox executor → nudge → submit → patch) | **48 / 48 pass** | `scripts/validate.sh` |
 | P001 | Packaging V1, V0, V1-nograph, V2 with strict validation + ADK compile | all **VALID** | `scripts/package_submission.sh [--variant X]` |
+
+## A2. Checks against the OFFICIAL harness (VERIFIED, added in session 2)
+Official libraries: `swegemma 0.2.7`, `adk-submission 0.2.11`, `adk-eval-core 0.1.0` from the organizers' public
+wheelhouse dataset (`scripts/setup_official_harness.sh`). Subprocess sandbox, macOS, Python 3.12.
+
+| ID | What | Result |
+|---|---|---|
+| O001 | Official `validate_directory` + `compile_submission` on every variant | V1, V0, V1-nograph pass; **V2 FAILED** (`PathTraversalError`: sub-agent `skills: ../skills/...`; official skill paths are root-relative and reject `..`). Fixed; now all 8 variants pass |
+| E003 | Official Evaluator grading of reference patches on the 12 local cases | **12/12 resolved**, the same as our grader |
+| E004 | Official Evaluator grading of empty patches | **0/12** |
+| E005 | V1 skills in the official subprocess sandbox (scripted model) | **Bug found**: nav/tests/review saw an empty directory (`/workspace` absent, ADK chdir to temp). Fixed (`$PWD` fallback) and re-run: skills return real results; patch resolved |
+| E006 | Final V1.1 zip, same scripted run | resolved; request log: `enable_thinking: false`, `max_completion_tokens 6144`, 13 tools |
+| O002 | What the harness sends for thinking | only `enable_thinking` on/off; `thinking_budget` is never sent (V1's "1024-token budget" was not real) |
+| O003 | Grading timeout | `timeout_seconds` caps the hidden-test pytest run → V1's 120 s was a latent failure mode; V1.1 uses 300 |
+| T002 | Test suite | **63 tests pass** (`scripts/validate.sh`, which also runs the official check) |
 
 ## B. Localization benchmark (EXPERIMENTAL: n = 12, one repository, no LLM)
 
@@ -56,29 +87,33 @@ Findings:
 
 Caveats: 12 cases from one repository; a proxy extractor rather than the model; an approximate graph. Treat these as direction, not magnitude.
 
-## C. Agent runs with Gemma 4 (TODO: blocked on a model endpoint)
+**Reproduction check (L007, session 2):** rerunning the benchmark with current code gives per-task results
+identical to L006 (`evaluations/analysis/localization_L007_repro.json`), so the numbers reproduce.
+**Downgrade:** the "similar" strategy used *our lexical-proxy* embeddings. A third-party benchmark on the **official**
+129 tasks with the **official** embeddings found them weak for issue-text localization (file recall@5: embeddings 0.21,
+graph PPR 0.26, vs TF-IDF 0.50; see docs/public_research.md). The "+similarity search" part of finding 3 therefore
+probably doesn't transfer. The callee-following part uses `calls` edges, which the official graphs do contain,
+though without async functions. It remains EXPERIMENTAL.
 
-Nothing in this section has been run. No resolution rate for V0/V1/V2 exists yet. The runs are fully scripted:
-```bash
-export G4_API_BASE=http://<vllm-host>:8000/v1 G4_MODEL=gemma-4-31b-it-qat-w4a16-ct   # + G4_API_KEY if needed
-scripts/run_experiment.sh --exp-id E010-v0 --variant v0
-scripts/run_experiment.sh --exp-id E011-v1
-scripts/run_experiment.sh --exp-id E012-v1nograph --variant v1_nograph
-scripts/run_experiment.sh --exp-id E013-v2 --variant v2
-.venv/bin/python -m g4agent.analysis evaluations/results/E01*
-```
-Planned order and decision rules:
-| ID | Hypothesis | Keep the change if |
-|---|---|---|
-| E010 vs E011 | V1 (skills + operational prompt) beats V0 | V1 resolves more **and** has fewer `no_attempt`/`timeout_budget` failures |
-| E011 × 3 seeds | Measure run-to-run noise | (needed before any other comparison is meaningful) |
-| E012 | Graph tools earn their calls | V1 ≥ V1-nograph by more than the noise |
-| E013 | Sub-agents pay for their extra turns within 4.5 min | V2 > V1 by more than the noise, and mean time stays below the budget |
-| E014 | `thinking_budget` 1024 vs 2048 vs 512 | best resolution at equal time |
-| E015 | `max_time_minutes` sensitivity (3 / 4.5 / 6) | measured on the real server to confirm the 12 h projection |
+## C. Real Gemma 4 runs (TODO: blocked on hardware/credentials)
+Nothing here has been run. The paths are built and tested up to the GPU (docs/kaggle_runtime.md, docs/real_baseline.md):
+- Kaggle (4× L4, official recipe): `python -m g4agent.kaggle_kernel --variants v0 root --n-tasks 3` → push → `kernels output`.
+- Own vLLM server: `scripts/check_model_endpoint.sh`, then `scripts/run_real_eval.sh --exp-id R00x ... [--variant X]`.
 
-Official data (129 tasks) replaces the local cases as soon as Kaggle credentials are available:
-`--tasks data/tasks.jsonl --data-dir data` (also switches the graph tools to the official graphs and embeddings).
+### Controlled ablation plan (one variable per variant; same tasks, same server session)
+| ID | Variant | Single change vs V1.1 (root) | Question |
+|---|---|---|---|
+| A | root | – (V1.1) | reference |
+| B | `v1_nograph` | graph tools removed; prompt uses nav.py show/usages instead | do graph tools earn their calls? |
+| C | `v1_noskills` | no skills; same workflow with plain run_command | do the helper scripts help? |
+| D | `v1_oldloc` | LOCATE section reverted to the pre-benchmark prompt | does the evidence-driven localization prompt help? |
+| E | A vs B | graph-guided (callee-following) localization vs none | – |
+| F | `v1_baseline` | V1 configuration (thinking on, 4.5 min, 120 s timeout) | did the V1.1 changes help as a whole? |
+| G | `v2` | + code_analyzer and patch_reviewer AgentTools | do sub-agents pay for their extra turns? |
+| H | `v1_think` | thinking on (everything else V1.1) | thinking vs visible short reasoning at a 5-min cap |
+Run order: (1) R001 smoke, V0 vs A on 3 sound tasks; (2) A × 3 seeds on ≥ 20 tasks to measure noise; (3) B, C, D, G, H on the same tasks.
+A sub-agent (G) is kept only if it beats A by more than the noise **and** its mean duration stays under the cap.
+Command: `python -m g4agent.kaggle_kernel --variants root v1_nograph v1_noskills v1_oldloc v1_think v2 --n-tasks 20`.
 
 ## D. Leaderboard submissions
 None made. **No leaderboard score exists for this project.** (Submitting needs your Kaggle account; see docs/submission.md.)

@@ -87,3 +87,12 @@ def test_workspace_found_via_pwd_like_official_subprocess_sandbox(repo, tmp_path
     r = subprocess.run([sys.executable, str(PROJECT / "skills/repo-navigation/scripts/nav.py"), "find", "clamp"],
                        cwd=cwd, env=env, capture_output=True, text=True, timeout=60)
     assert "pkg/mathutil.py" in r.stdout, r.stdout
+
+
+def test_review_flags_whitespace_only_file(repo, tmp_path):
+    src = repo / "pkg" / "mathutil.py"
+    src.write_text(src.read_text().replace("return low  # BUG: should return high", "return high"))
+    init = repo / "pkg" / "__init__.py"
+    init.write_text(init.read_text() + "\n\n")
+    out = run("debugging/scripts/review.py", [], repo, tmp_path)
+    assert "pkg/__init__.py has only whitespace" in out and "FIX FIRST" in out

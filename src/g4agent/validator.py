@@ -263,6 +263,16 @@ def check_agents(tree: AgentTree, report: Report) -> None:
             else:
                 report.error(f"{where}: unsupported tool entry {t!r}")
 
+        if isinstance(instr, str):
+            for t in sorted(rules.HARNESS_TOOLS):
+                if re.search(rf"\b{t}\b", instr) and t not in tool_names:
+                    report.warn(f"{where}: instruction mentions tool {t!r} but the agent does not have it")
+            if "run_skill_script" in instr and not cfg.get("skills"):
+                report.warn(f"{where}: instruction mentions run_skill_script but the agent declares no skills")
+            for sk in re.findall(r'skill_name="([a-z0-9-]+)"', instr):
+                if not any(str(x).rstrip("/").endswith("/" + sk) or str(x) == sk for x in cfg.get("skills") or []):
+                    report.warn(f"{where}: instruction uses skill {sk!r} which this agent does not declare")
+
         if node.via == "root":
             if "submit_patch" not in tool_names:
                 report.warn(f"{where}: root agent lacks submit_patch (harness falls back to git diff)")

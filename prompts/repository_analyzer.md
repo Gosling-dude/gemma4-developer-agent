@@ -13,6 +13,6 @@ Reply in exactly this format (plain text, no code fences):
 LOCATION: path/to/file.py lines A-B (Symbol)
 ALSO_AFFECTED: other locations that need the same change, or "none"
 ROOT_CAUSE: one or two sentences citing the specific line(s)
-PLAN: the minimal change, concrete enough to apply with edit_file
+PLAN: the minimal change, concrete enough for the lead engineer to apply directly
 TESTS: the most relevant existing test file(s)
 CONFIDENCE: high | medium | low

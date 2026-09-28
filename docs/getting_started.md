@@ -63,8 +63,9 @@ scripts/setup.sh --rich-env            # Python env for the local 'rich' test ca
 scripts/run_experiment.sh --exp-id E000-oracle --agent oracle   # should resolve 100%
 .venv/bin/python -m g4agent.localization                         # how well our search finds the right file
 ```
-With a model: you need an OpenAI-compatible endpoint serving Gemma 4. The best option is the competition model on
-vLLM with a GPU (Kaggle notebooks, a cloud VM). Then:
+With the real model: the practical option is a Kaggle notebook with 4× L4 GPUs. `docs/kaggle_runtime.md` walks
+through it step by step; `python -m g4agent.kaggle_kernel` generates the notebook. With your own vLLM server:
+`scripts/check_model_endpoint.sh` then `scripts/run_real_eval.sh`. The older local runner also works:
 ```bash
 export G4_API_BASE=http://<server>:8000/v1 G4_MODEL=gemma-4-31b-it-qat-w4a16-ct
 scripts/run_experiment.sh --exp-id E010-v0 --variant v0
@@ -81,8 +82,10 @@ scripts/run_experiment.sh --exp-id E020 --tasks data/tasks.jsonl --data-dir data
 Upload `submission/submission.zip` on the competition's "Submit Predictions" page. See `docs/submission.md`.
 
 ## 7. Assumptions to know about
-- The 12 h budget may be shared sequentially across tasks. We *assume the worst case*. If Kaggle runs
-  tasks in parallel, more time per task would be affordable.
+- Tasks run one after another, and going over 12 h currently fails the whole submission (host-confirmed).
+  That's why every task gets a hard 5-minute cap (docs/budget_model.md).
 - The official harness source isn't public. Our local harness follows its documentation closely but isn't
   identical (see `docs/architecture.md` §3).
-- No real model has been run from this machine yet, so there is **no measured resolution rate**. See `docs/experiments.md`.
+- No real model has been run yet, so there is **no measured resolution rate**, and nothing has been
+  submitted to Kaggle. See `docs/real_baseline.md` and the score table in `docs/experiments.md`.
+- For reference, the best public leaderboard score is 0.15 (≈ 9 of 58 tasks). This is a hard benchmark.

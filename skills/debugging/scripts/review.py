@@ -94,6 +94,14 @@ def main():
         problems.append("the diff is EMPTY: submitting now scores zero")
     elif not src_changed:
         problems.append("no non-test source file changed: the grader will see no fix")
+    removed = [l for l in diff.splitlines() if l.startswith("-") and not l.startswith("---")]
+    if len(src_changed) > 3 or len(added) + len(removed) > 150:
+        notes.append(f"broad patch ({len(src_changed)} source files, +{len(added)}/-{len(removed)} lines): "
+                     "confirm every file and hunk is required by the issue; revert anything unrelated")
+    ws_only = [f for f in src_changed if f not in untracked
+               and not git("diff", "-w", "--ignore-blank-lines", base, "--", f).stdout.strip()]
+    for f in ws_only:
+        problems.append(f"{f} has only whitespace/formatting changes (unrelated edit): git checkout {base} -- {f}")
     stat = git("diff", "--stat", base).stdout.strip().splitlines()
     emit("DIFF STAT: " + (stat[-1].strip() if stat else "(none)"))
     for f in changed:

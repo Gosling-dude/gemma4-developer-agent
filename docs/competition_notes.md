@@ -1,5 +1,31 @@
 # Competition notes (research log)
 
+## Session-2 verification (2026-09-28): official sources now checked directly
+Kaggle's own public web API was reachable anonymously (`research/kaggle/kapi.sh`), so the official pages, rules,
+leaderboard, discussion and notebook sources are saved under `research/kaggle/`. The organizers' **harness source
+code** (swegemma 0.2.7, adk-submission 0.2.11, adk-eval-core 0.1.0) was installed from their public wheelhouse dataset.
+The Chrome route still fails (extension signed into another account) and competition **data** still needs credentials (HTTP 401).
+
+| Fact | Status now | Source |
+|---|---|---|
+| Model `gemma-4-31b-it-qat-w4a16-ct` only, for every agent | VERIFIED | official "Model Selection…" page; `validate_single_declared_model` |
+| agent.yaml at zip root; sub-agents, skills and adapters allowed; declarative only | VERIFIED | Evaluation page; adk-submission source |
+| Allowed extensions `.yaml .yml .md .txt .py .json .safetensors` | VERIFIED | `swegemma/config.py` |
+| 12 h for all tasks incl. setup, excl. validation; **sequential**; exceeding it **errors the submission** | VERIFIED | Evaluation page; host, discussion 743063 |
+| eval_config keys read: exactly the 4; missing = **no limit** | VERIFIED | host, 743063 |
+| **1 submission/day, 2 final selections**, team ≤ 5 | VERIFIED | rules page; competition metadata |
+| `skills:` paths are **root-relative**, `..` rejected; `config_path` rejects `..`; `!include ..` OK inside root | VERIFIED (corrects earlier note) | adk-submission `schema.py`, `resolvers/tools.py`, `context.py` |
+| `thinking_budget` is **not** sent to the model; only `enable_thinking` on/off (`include_thoughts:false` → off) | VERIFIED (corrects earlier design) | `resolvers/generation.py`; logged request |
+| `timeout_seconds` **also caps the grading pytest run** | VERIFIED (new) | `harness/verification.py` |
+| Skill scripts run in the task sandbox via `python3`, within the task time budget | VERIFIED | `adk_eval_core/sandbox/base.py` |
+| Per-task time cap cuts in-flight model calls (asyncio.timeout); the working tree is still graded | VERIFIED | `harness/agent_runner.py` |
+| Public LB = 58 tasks; top score 0.15 (2026-09-28) | leaderboard VERIFIED; the 58 is a 3P inference | leaderboard API; discussion 743506 |
+| Graph edges: only `calls`; no async functions or module nodes | 3P audit, host confirmed async missing | 742911 |
+| LoRA adapters currently wiped by the patched vLLM | 3P repro, host acknowledged | 743508 |
+| Data Security rule: don't redistribute competition data | VERIFIED | rules §4b; no competition data is committed |
+
+The sections below are the session-1 notes, kept for history; the table above takes precedence.
+
 Research date: **2026-09-28** (competition started 2026-09-23).
 Labels: **VERIFIED** = read in an official text or in installed library source code.
 **SOURCED** = official text read through a third-party verbatim copy (kaggle.com pages
