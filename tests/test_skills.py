@@ -76,3 +76,14 @@ def test_review_flags_problems_then_ready(repo, tmp_path):
 def test_review_empty_diff(repo, tmp_path):
     out = run("debugging/scripts/review.py", [], repo, tmp_path)
     assert "EMPTY" in out and "FIX FIRST" in out
+
+
+def test_workspace_found_via_pwd_like_official_subprocess_sandbox(repo, tmp_path):
+    """Official subprocess sandbox: no /workspace, ADK chdirs to a temp dir; only $PWD points at the repo."""
+    env = {k: v for k, v in os.environ.items() if k != "SWE_WORKSPACE"}
+    env["PWD"] = str(repo)
+    cwd = tmp_path / "adk_tmp"
+    cwd.mkdir()
+    r = subprocess.run([sys.executable, str(PROJECT / "skills/repo-navigation/scripts/nav.py"), "find", "clamp"],
+                       cwd=cwd, env=env, capture_output=True, text=True, timeout=60)
+    assert "pkg/mathutil.py" in r.stdout, r.stdout

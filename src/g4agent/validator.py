@@ -432,8 +432,9 @@ def check_eval_config(root: Path, report: Report) -> None:
         else:
             report.info.append(msg)
     ts = ev.get("timeout_seconds")
-    if isinstance(ts, (int, float)) and isinstance(minutes, (int, float)) and ts > minutes * 60:
-        report.warn("eval_config.yaml: timeout_seconds exceeds the whole per-task time budget")
+    if isinstance(ts, (int, float)) and ts < 300:
+        report.warn(f"eval_config.yaml: timeout_seconds={ts} < 300 also caps the hidden-test pytest run in grading "
+                    "(swegemma harness/verification.py); slow test files would fail correct patches")
 
 
 # --------------------------------------------------------------------------- optional ADK compile

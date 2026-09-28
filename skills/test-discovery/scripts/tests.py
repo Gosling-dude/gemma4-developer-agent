@@ -17,7 +17,16 @@ import subprocess
 import sys
 from collections import defaultdict
 
-WS = os.environ.get("SWE_WORKSPACE") or ("/workspace" if os.path.isdir("/workspace") else os.getcwd())
+def _find_workspace():
+    """The repository root. run_skill_script chdirs into a temp dir first, so cwd is useless; in the Docker
+    scorer the repo is /workspace, in the subprocess sandbox (Kaggle notebooks) it is the launching shell's $PWD."""
+    for cand in (os.environ.get("SWE_WORKSPACE"), "/workspace", os.environ.get("PWD"), os.getcwd()):
+        if cand and os.path.isdir(os.path.join(cand, ".git")):
+            return cand
+    return os.environ.get("SWE_WORKSPACE") or os.environ.get("PWD") or os.getcwd()
+
+
+WS = _find_workspace()
 LIMIT = 4500
 _out = []
 
