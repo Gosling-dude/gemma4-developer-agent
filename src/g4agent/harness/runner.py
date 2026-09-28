@@ -144,13 +144,14 @@ def make_model_factory() -> Any:
 
 
 async def run_agent(submission_dir: Path, task: Task, workspace: Path, tmp_dir: Path, budget: Budget,
-                    graph: CodeGraph | None, env: dict[str, str], trace_path: Path) -> RunOutcome:
+                    graph: CodeGraph | None, env: dict[str, str], trace_path: Path,
+                    model_factory: Any = None) -> RunOutcome:
     harness = LocalHarness(workspace, tmp_dir, budget, graph, env)
     fns = harness.tool_functions()
     python = shutil.which("python3", path=env.get("PATH")) or sys.executable
     executor = SandboxExecutor(python=python, env=env, timeout=budget.command_timeout_seconds)
     agent = compile_submission(submission_dir, tool_factory=lambda n: FunctionTool(fns[n]),
-                               model_factory=make_model_factory(), code_executor=executor)
+                               model_factory=model_factory or make_model_factory(), code_executor=executor)
     runner = Runner(app_name="swegemma_eval", agent=agent, session_service=InMemorySessionService())
     state = {"problem_description": task.problem_statement}
     if task.hints_text.strip():

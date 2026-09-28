@@ -111,11 +111,11 @@ def build(repo: str, max_cases: int, scan: int, out: Path, workdir: Path | None)
             print(f"  skip {iid}: no linked issue text", file=sys.stderr)
             continue
         task = Task(iid, repo, base_sha, statement, "", code, tests, pr.get("mergedAt", ""))
-        fail = verify(task, "", allow_empty=True, workdir=workdir)
+        fail = verify(task, "", allow_empty=True, workdir=workdir, timeout=300)
         if fail.resolved or fail.passed + fail.failures + fail.errors == 0:
             print(f"  skip {iid}: tests do not fail without the fix ({fail.error or 'passed'})", file=sys.stderr)
             continue
-        good = verify(task, code, workdir=workdir)
+        good = verify(task, code, workdir=workdir, timeout=300)
         if not good.resolved:
             print(f"  skip {iid}: reference fix does not pass ({good.error or f'{good.failures}F/{good.errors}E'})",
                   file=sys.stderr)
