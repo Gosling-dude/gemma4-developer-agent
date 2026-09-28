@@ -104,11 +104,7 @@ def load_yaml(root: Path, path: Path, *, _depth: int = 0, _stack: tuple[Path, ..
 
     def expand(node: Any) -> Any:
         if isinstance(node, _Include):
-            if ".." in PurePosixPath(node.rel).parts:
-                warnings.append(
-                    f"{path.relative_to(root)}: '!include {node.rel}' uses '..'. Allowed while it stays "
-                    "inside the root, but HARNESS_README lists '..' as blocked; avoid it where possible."
-                )
+            # "..", if the target stays inside the root, is accepted by the official loader (adk-submission 0.2.11).
             target = resolve_inside(root, path.parent, node.rel)
             suffix = target.suffix.lower()
             if suffix in (".md", ".txt"):
@@ -138,6 +134,24 @@ def find_root_config(root: Path) -> Path:
     if len(found) > 1:
         raise SubmissionError(f"multiple root configs: {[p.name for p in found]}")
     return found[0]
+
+
+def _no_dotdot(rel: str, what: str) -> None:
+    if ".." in rel.replace("\\", "/").split("/"):
+        raise PathTraversalError(f"'..' is not allowed in {what} paths (official adk-submission rule): {rel!r}")
+
+
+def resolve_skill(root: Path, rel: str) -> Path:
+    """`skills:` entries are relative to the SUBMISSION ROOT and may not contain '..' (adk-submission 0.2.11)."""
+    _no_dotdot(rel, "skill")
+    return resolve_inside(root, root, rel)
+
+
+def resolve_config_path(root: Path, cur_dir: Path, rel: str) -> Path:
+    """`config_path`: no '..'; relative to the referencing file's directory if it exists there, else to the root."""
+    _no_dotdot(rel, "config_path")
+    local = cur_dir / rel
+    return resolve_inside(root, cur_dir if local.exists() else root, rel)
 
 
 @dataclasses.dataclass
@@ -200,12 +214,12 @@ def load_agent_tree(root_dir: Path) -> AgentTree:
         agents.append(AgentNode(cfg_path, loaded.data, depth, via))
         for skill in loaded.data.get("skills") or []:
             if isinstance(skill, str):
-                skill_dirs.add(resolve_inside(root_dir, cfg_path.parent, skill))
+                skill_dirs.add(resolve_skill(root_dir, skill))
         adapter = loaded.data.get("adapter")
         if isinstance(adapter, str) and adapter:
             adapter_dirs.add(resolve_inside(root_dir, root_dir / "adapters", adapter))
         for kind, rel in iter_child_refs(loaded.data):
-            visit(resolve_inside(root_dir, cfg_path.parent, rel), depth + 1, kind)
+            visit(resolve_config_path(root_dir, cfg_path.parent, rel), depth + 1, kind)
 
     visit(root_cfg, 0, "root")
     return AgentTree(root_dir, root_cfg, agents, files, skill_dirs, adapter_dirs, warnings)

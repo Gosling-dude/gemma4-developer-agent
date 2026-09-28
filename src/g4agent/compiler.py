@@ -23,7 +23,7 @@ from google.adk.tools.function_tool import FunctionTool
 from google.adk.tools.skill_toolset import SkillToolset
 from google.genai import types
 
-from .loader import find_root_config, load_yaml, resolve_inside
+from .loader import find_root_config, load_yaml, resolve_config_path, resolve_skill
 
 ToolFactory = Callable[[str], Any]
 ModelFactory = Callable[[str, str | None], Any]
@@ -105,7 +105,7 @@ def compile_submission(
         cls = cfg.get("agent_class", "LlmAgent")
         children = []
         for sub in cfg.get("sub_agents") or []:
-            children.append(build(resolve_inside(root, cfg_path.parent, sub["config_path"])))
+            children.append(build(resolve_config_path(root, cfg_path.parent, sub["config_path"])))
         if cls == "SequentialAgent":
             return SequentialAgent(name=cfg["name"], description=cfg.get("description", ""), sub_agents=children)
         if cls == "ParallelAgent":
@@ -120,11 +120,11 @@ def compile_submission(
                 tools.append(tool_factory(t))
             else:
                 at = t["agent_tool"]
-                sub_agent = build(resolve_inside(root, cfg_path.parent, at["config_path"]))
+                sub_agent = build(resolve_config_path(root, cfg_path.parent, at["config_path"]))
                 tools.append(AgentTool(agent=sub_agent, skip_summarization=bool(at.get("skip_summarization"))))
         skill_paths = cfg.get("skills") or []
         if skill_paths:
-            skills = [load_skill_from_dir(resolve_inside(root, cfg_path.parent, s)) for s in skill_paths]
+            skills = [load_skill_from_dir(resolve_skill(root, s)) for s in skill_paths]
             tools.append(SkillToolset(skills=skills, code_executor=code_executor))
 
         model = cfg["model"]

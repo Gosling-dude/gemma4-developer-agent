@@ -134,3 +134,16 @@ def test_zip_with_nested_root_rejected(tmp_path: Path, submission: Path):
                 zf.write(p, "submission/" + p.relative_to(submission).as_posix())
     report = validate_zip(z)
     assert not report.ok and any("not at the archive root" in e for e in report.errors)
+
+
+def test_skill_path_with_dotdot_rejected(submission: Path):
+    """Official adk-submission rejects '..' in skill paths (lexical check), and skills are root-relative."""
+    p = submission / "agent.yaml"
+    p.write_text(p.read_text().replace("  - skills/debugging", "  - prompts/../skills/debugging"))
+    assert any("'..' is not allowed in skill" in e for e in errors_of(submission))
+
+
+def test_include_dotdot_inside_root_allowed(submission: Path):
+    (submission / "sub").mkdir()
+    (submission / "sub" / "x.yaml").write_text("k: !include ../prompts/system.md\n")
+    assert isinstance(load_yaml(submission, submission / "sub" / "x.yaml").data["k"], str)
