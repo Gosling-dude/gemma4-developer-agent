@@ -156,8 +156,10 @@ def record(r, variant, t_start, t_end):
             'patch_files': sorted(set(l[6:].split()[0] for l in (r.agent_patch or '').splitlines()
                                       if l.startswith('+++ b/'))),
             'tool_calls': getattr(r, 'tool_calls', None), 'llm_calls': getattr(r, 'total_llm_calls', None),
+            'total_tokens': getattr(r, 'total_tokens', None), 'status': getattr(r, 'status', None),
             'duration_s': round(r.duration_seconds or 0, 1), 'error': r.error, 'start': t_start, 'end': t_end,
-            'trace': str(getattr(r, 'trace_json_path', '') or ''), 'test_tail': (r.test_output or '')[-1500:]}
+            'trace': str(getattr(r, 'trace_json_path', '') or ''), 'patch': r.agent_patch or '',
+            'test_tail': (r.test_output or '')[-1500:]}
 
 sound = candidates
 if RUN.get('gold_control', True):
@@ -270,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     run = {"n_tasks": args.n_tasks, "n_candidates": args.n_candidates or args.n_tasks + 3, "repo": args.repo,
            "task_ids": args.task_ids, "exclude": args.exclude, "gold_control": not args.no_gold_control,
            "variants": args.variants}
-    out = build(args.variants, run, args.out, args.slug, "G4 real eval")
+    out = build(args.variants, run, args.out, args.slug, args.slug)  # Kaggle derives the slug from the title
     print(f"kernel written to {out}\n  set the id in kernel-metadata.json (replace {{KAGGLE_USERNAME}}), then:\n"
           f"  kaggle kernels push -p {out}")
     return 0

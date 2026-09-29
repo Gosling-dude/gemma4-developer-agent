@@ -13,7 +13,7 @@ No row below is a Gemma 4 result or a Kaggle score. The "Model" column says exac
 | V1 (pre-fix skills) | scripted fake model | official, subprocess sandbox | 1 | 1* | – | 4.4 s | VERIFIED pipeline test; *resolved only because the scripted edit was correct: the skills saw an empty dir (bug) |
 | V1.1 | scripted fake model | official, subprocess sandbox (E005/E006) | 1 | 1 | – | 3.9 s | VERIFIED pipeline test (no model quality measured) |
 | V0 | **real Gemma 4** | official | – | – | – | – | TODO (blocked: no GPU/endpoint/credentials) |
-| V1.1 | **real Gemma 4** | official | – | – | – | – | TODO (blocked) |
+| V1.1 | **real Gemma 4** | official, Kaggle 4× L4 (R001-v1-smoke) | 0 run | – | – | – | TODO (blocked 2026-09-29: no Kaggle credentials; see §C) |
 | any | **Kaggle leaderboard** | – | – | – | – | – | **none: nothing submitted** |
 
 Labels: **VERIFIED** = measured here, reproducible with the command given. **EXPERIMENTAL** = measured, but on a
@@ -95,8 +95,15 @@ graph PPR 0.26, vs TF-IDF 0.50; see docs/public_research.md). The "+similarity s
 probably doesn't transfer. The callee-following part uses `calls` edges, which the official graphs do contain,
 though without async functions. It remains EXPERIMENTAL.
 
-## C. Real Gemma 4 runs (TODO: blocked on hardware/credentials)
-Nothing here has been run. The paths are built and tested up to the GPU (docs/kaggle_runtime.md, docs/real_baseline.md):
+## C. Real Gemma 4 runs (TODO: blocked on credentials)
+Nothing here has been run.
+
+| ID | Date | What | Outcome | Label |
+|---|---|---|---|---|
+| R001-v1-smoke (attempt 1) | 2026-09-29 | V1.1 (unchanged, tag `v1.1-baseline`), 3 gold-sound official rich tasks, Kaggle 4× L4 | **Not executed.** Preflight: package VALID (official compile OK); no Kaggle API credentials, browser session unavailable, no GPU/endpoint. 0 tasks, 0 model calls. Record: `evaluations/attempts/R001-v1-smoke_attempt1_2026-09-29.json` | TODO |
+
+The id `R001-v1-smoke` was deliberately **not** used for a results directory, so the real run can use it:
+`scripts/run_kaggle_eval.sh --exp-id R001-v1-smoke`. The paths are built and tested up to the GPU (docs/kaggle_runtime.md, docs/real_baseline.md):
 - Kaggle (4× L4, official recipe): `python -m g4agent.kaggle_kernel --variants v0 root --n-tasks 3` → push → `kernels output`.
 - Own vLLM server: `scripts/check_model_endpoint.sh`, then `scripts/run_real_eval.sh --exp-id R00x ... [--variant X]`.
 

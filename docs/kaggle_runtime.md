@@ -33,7 +33,14 @@ Tested locally (the notebook's real cells, under the official harness, with a sc
 cell): gold control 6/6, both variants run, and all result files are written. **Not tested:** the wheel-install and vLLM
 cells, which are copied from the host notebook.
 
-## Steps (you run these; credentials stay on your machine)
+## One command (recommended)
+```bash
+scripts/run_kaggle_eval.sh --exp-id R001-v1-smoke     # preflight, build, push, wait, download, report
+```
+It does the manual steps below. It also fixes the slug by setting the kernel title equal to the slug, and reads the
+username from `KAGGLE_USERNAME` or `kaggle.json` (credentials are never printed).
+
+## Steps (manual; credentials stay on your machine)
 1. Accept the competition rules on the website (needed for the data and model).
 2. Create a Kaggle API token and put it at `~/.kaggle/kaggle.json` (chmod 600), or export
    `KAGGLE_USERNAME` / `KAGGLE_KEY` in your shell. **Never commit it** (`.gitignore` covers `kaggle.json` and `.env`).

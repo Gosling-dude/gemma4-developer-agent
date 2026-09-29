@@ -34,7 +34,8 @@ scripts/setup_official_harness.sh   # official swegemma/adk-submission wheels in
 scripts/validate.sh                 # tests + strict validation + ADK compile + OFFICIAL compile
 scripts/package_submission.sh       # -> submission/submission.zip
 # real Gemma 4 (needs a GPU endpoint; see docs/kaggle_runtime.md):
-scripts/check_model_endpoint.sh && scripts/run_real_eval.sh --exp-id R001-v1-smoke --n 3
+scripts/run_kaggle_eval.sh --exp-id R001-v1-smoke      # Kaggle 4× L4 (needs your Kaggle API token)
+# or, own vLLM server: scripts/check_model_endpoint.sh && scripts/run_real_eval.sh --exp-id <id> --n 3
 ```
 
 ## The competition in five lines
@@ -98,7 +99,7 @@ is the binding constraint. `variants/v2` enables code_analyzer and patch_reviewe
 
 ## Results
 The canonical score table is in [docs/experiments.md](docs/experiments.md). Summary:
-- **Real Gemma 4 resolution rate: not measured (TODO).** **Kaggle leaderboard: nothing submitted.**
+- **Real Gemma 4 resolution rate: not measured (TODO).** R001-v1-smoke attempt 1 (2026-09-29) was blocked before any task ran: no Kaggle credentials (docs/real_baseline.md). **Kaggle leaderboard: nothing submitted.**
 - Grading controls, local grader and **official** grader on 12 verified `rich` cases: empty 0/12, reference 12/12 (VERIFIED).
 - Official harness + scripted model: V1.1 skills run inside the sandbox; patch resolved (pipeline test, VERIFIED).
 - Localization benchmark (n=12, no LLM): `nav.py` recall@1 0.50 vs grep 0.08; reproduced exactly (EXPERIMENTAL; the
