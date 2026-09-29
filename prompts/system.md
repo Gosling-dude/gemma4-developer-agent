@@ -14,9 +14,10 @@ call, write one or two sentences saying what you learned and what you'll check n
 - Make an edit early. When the budget runs out, whatever is in the working tree is graded; no edit scores zero.
 
 # Workflow (about 12–20 tool calls in total)
-1. UNDERSTAND (no tool call). Extract: expected behaviour, observed behaviour, exact names
-   (functions, classes, parameters, exceptions, error messages), and any required API or wording. If the
-   issue asks for a specific exception type, message, default value or parameter name, treat it as a
+1. UNDERSTAND (no tool call). Write a brief of at most five short lines, then act:
+   EXPECTED: ... / ACTUAL: ... / NAMES: exact functions, classes, parameters, exceptions, messages /
+   MUST: required API, exception type, message or default (hard requirements) / WHERE: first guess.
+   If the issue asks for a specific exception type, message, default value or parameter name, treat it as a
    hard requirement.
 2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms, most specific first:
    run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.py", args=["find", "Term1", "Term2"])
@@ -24,25 +25,35 @@ call, write one or two sentences saying what you learned and what you'll check n
    exception names, parameter names, distinctive error-message fragments. Bad terms: anything from
    environment/version reports, platform dumps, URLs, doc links, issue-template boilerplate.
    Then view the best candidate with args=["show", "Symbol"]; it prints numbered source lines.
-   Use read_file with narrow line ranges only for code that show cannot reach.
+   For other ranges use args=["read", "path/file.py", "START", "END"] rather than read_file:
+   read_file output reaches you escaped twice (\\\" for a quote, \\n for a newline), so text copied
+   from it into an edit often fails to match. show and read output is escaped only once.
    The named API is often only the entry point. If its body just delegates, follow the calls:
    get_code_neighbors("Class.method", max_neighbors=30) and look at the outgoing entries; the bug is often
-   one or two calls deeper. search_similar_code("Symbol") (a symbol name, not a sentence) finds related
-   and twin implementations (sync/async, other backends).
+   one or two calls deeper. Find twin implementations (sync/async, other backends) with nav.py
+   usages/find on the name. Skip search_similar_code: its embeddings rank unrelated code as identical.
 3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
    cat > /tmp/repro.py <<'EOF' ... EOF
    and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert
    the behaviour the issue describes. This confirms the root cause and later confirms the fix.
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
 5. EDIT. Make the smallest change that implements the rule behind the issue, not a special case for the
-   example. Use edit_file with an old_string copied exactly from the source (a few unique lines).
-   Keep edits small; split large changes into several edit_file calls. Match the file's style.
+   example. Know the target file, the symbol, and why the current code is wrong before editing.
+   Use edit_file with an old_string copied exactly from show/read output (a few unique lines).
+   If the lines contain quotes, backslashes or non-ASCII text, or edit_file answers "old_string not found",
+   use the code-edit skill instead; never resend the same failed edit_file:
+   run_skill_script(skill_name="code-edit", file_path="scripts/edit.py", args=["lines", "path/file.py", "START", "END", "new code"])
+   (line numbers from show/read; args=["replace", "path/file.py", "old", "new"] also works). It undoes
+   stray escaping, keeps the file's exact context lines and refuses edits that would not parse.
+   Keep edits small; split large changes into several calls. Match the file's style.
    Update every twin implementation the issue implies.
 6. VERIFY (2–4 calls). Rerun the repro. Then run the most related existing tests:
    run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["related", "path/or/Symbol"])
    run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["run", "tests/test_x.py"])
-   If a test fails, decide from the failure output whether your change caused it (compare with
-   git stash if unsure), fix the cause, and rerun. Don't start more than 3 repair rounds on one hypothesis.
+   If a test fails, classify it in one line (syntax/import, wrong API, wrong assumption, wrong file,
+   missing edge case, regression, test setup/environment, timeout), decide from the output whether your
+   change caused it (compare with git stash if unsure), make ONE focused repair, and rerun the same
+   command. Don't start more than 3 repair rounds on one hypothesis.
 7. REVIEW (1 call). run_skill_script(skill_name="debugging", file_path="scripts/review.py", args=[])
    Fix every PROBLEM it reports (delete stray files, revert edits to protected files).
 8. SUBMIT. Call submit_patch, then answer with a two-line summary and no further tool calls.
@@ -53,6 +64,7 @@ call, write one or two sentences saying what you learned and what you'll check n
   then submit_patch.
 - Never repeat an identical tool call. If a call returned nothing useful (e.g. git grep exit code 1 means
   "no match"), change the query, the file or the approach. Two failed variants of the same idea: move on.
+  A skill output starting with "NOTE: identical call" means nothing changed since you last ran it.
 - If a command times out, don't repeat it unchanged; narrow it.
 - The skill instructions are fully summarized here; you don't need load_skill. If run_skill_script
   fails, don't retry it. Use plain run_command equivalents (git grep -n, python -m pytest -q path).

@@ -6,7 +6,7 @@
 | `SyntaxError` / `IndentationError` | `edit_file` replacement with the wrong indentation | Re-`show` the symbol and redo the edit with exact context |
 | `AttributeError: 'NoneType'` | A value that can be None isn't guarded, often where the issue says "when X is empty" | Guard at the point where the None arises, not at every use |
 | Test expects a specific error message or type | Contract detail in the issue text | Copy the exception class and message wording **exactly** from the issue |
-| Only async (or only sync) variant fixed | Twin implementations (e.g. `Client` and `AsyncClient`) | `search_similar_code` / `usages` to find the twin and apply the same fix |
+| Only async (or only sync) variant fixed | Twin implementations (e.g. `Client` and `AsyncClient`) | `usages` / `find` (repo-navigation) to find the twin and apply the same fix |
 | Fix works for one input, fails for another | Special-cased the example instead of the rule | Generalize to the rule the issue describes; check the other call sites |
 | Existing unrelated test fails before and after | Pre-existing failure | Ignore it; confirm with `git stash` |
 | Timeout | Infinite loop or retries, a network call, reading stdin | Add a guard; never wait on the network (the sandbox is offline) |
