@@ -106,9 +106,14 @@ def test_eval_config_unknown_key(submission: Path):
     assert any("unknown key" in e for e in errors_of(submission))
 
 
-def test_default_budget_warns(submission: Path):
+def test_unsafe_time_cap_is_an_error(submission: Path):
     (submission / "eval_config.yaml").write_text("evaluation:\n  max_time_minutes: 60\n")
-    assert any("EXCEEDS" in w for w in validate_dir(submission).warnings)
+    assert any("EXCEED" in e for e in validate_dir(submission).errors)
+    # 5.5 min fits even 120 tasks (11.55 h); 6.0 min does not (12.55 h)
+    (submission / "eval_config.yaml").write_text("evaluation:\n  max_time_minutes: 5.5\n")
+    assert not any("EXCEED" in e for e in validate_dir(submission).errors)
+    (submission / "eval_config.yaml").write_text("evaluation:\n  max_time_minutes: 6.0\n")
+    assert any("EXCEED" in e for e in validate_dir(submission).errors)
 
 
 def test_missing_adapter(submission: Path):

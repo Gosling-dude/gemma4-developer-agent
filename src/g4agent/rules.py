@@ -72,6 +72,12 @@ SKILL_NAME_MAX = 64
 
 # Whole-run budget (Overview: 12 h for all tasks, including sandbox setup).
 RUN_BUDGET_HOURS = 12.0
-EXPECTED_TEST_TASKS = 120
-ASSUMED_SETUP_MINUTES_PER_TASK = 0.75  # INFERRED; not documented.
+# Public LB = 58 tasks (the only count that reproduces every displayed score under 2-decimal truncation,
+# docs/public_research.md) and the public split is 50% -> about 116 test tasks, all in one sequential run.
+EXPECTED_TEST_TASKS = 116
+TEST_TASKS_UPPER_BOUND = 120  # the Data page's "about 120"; the worst case must fit even at this count
+# Host (discussion 743663): a whole run that produces no patches takes about 10 min including server start,
+# so per-task setup is seconds. 0.15 min/task and 15 min server start are deliberate over-estimates.
+ASSUMED_SETUP_MINUTES_PER_TASK = 0.15
+ASSUMED_SERVER_START_MINUTES = 15.0
 HARNESS_DEFAULT_TIME_MINUTES = 60.0
