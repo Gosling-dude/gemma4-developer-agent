@@ -1,6 +1,30 @@
 # Architecture
 
-## 1. What gets submitted (V1)
+## 0. Current version: V1.2 (differences from the V1 description below)
+```
+submission.zip
+├── agent.yaml                 root LlmAgent "swe_coder"; 9 harness tools + 4 skills
+├── eval_config.yaml           5.5 min / 80 tool calls / 100 turns / 300 s per command
+├── configs/sampling.yaml      T 0.3, top_p 0.95, top_k 64, max_output 6144, thinking OFF
+├── prompts/system.md
+└── skills/
+    ├── repo-navigation/       nav.py: find | outline | show | read | usages | layout
+    ├── test-discovery/        tests.py: related | run | info
+    ├── debugging/             diagnose.py: run | cmd ; review.py
+    └── code-edit/             edit.py: replace | lines   (new in V1.2)
+```
+| Step | V1.2 mechanism |
+|---|---|
+| UNDERSTAND | five-line written brief: EXPECTED / ACTUAL / NAMES / MUST / WHERE |
+| READ | `nav.py show` / `nav.py read`: skill output reaches the model JSON-escaped **once**, `read_file` output **twice** (VERIFIED, E006/E007 request logs), so text copied from the skills matches the file |
+| DEPENDENCIES | `get_code_neighbors` for callees; twins via `nav.py usages`. `search_similar_code` is no longer recommended (official embeddings near-collapsed) |
+| PATCH | `edit_file`; for lines with quotes/backslashes/non-ASCII or after "old_string not found": `edit.py lines` (no copying) or `edit.py replace` (undoes 1–2 escaping levels, line-wise match, context lines kept byte-exact, refuses unparseable results and test/config files) |
+| REPAIR | one-line failure class, then one focused repair |
+| LOOPS | every skill prints `NOTE: identical call…` when called again with the same args and nothing changed (HEAD, diff, argument files) |
+
+Rationale and evidence: [docs/v1_2.md](v1_2.md).
+
+## 1. What gets submitted (V1, historical)
 
 ```
 submission.zip

@@ -16,9 +16,8 @@ call, write one or two sentences saying what you learned and what you'll check n
 # Workflow (about 12–20 tool calls in total)
 1. UNDERSTAND (no tool call). Write a brief of at most five short lines, then act:
    EXPECTED: ... / ACTUAL: ... / NAMES: exact functions, classes, parameters, exceptions, messages /
-   MUST: required API, exception type, message or default (hard requirements) / WHERE: first guess.
-   If the issue asks for a specific exception type, message, default value or parameter name, treat it as a
-   hard requirement.
+   MUST: exception type, message, default value, parameter name or API the issue requires, exactly /
+   WHERE: first guess.
 2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms, most specific first:
    run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.py", args=["find", "Term1", "Term2"])
    Good terms: the API the issue calls (Class.method, function names, module paths like pkg.sub),
@@ -43,7 +42,8 @@ call, write one or two sentences saying what you learned and what you'll check n
    If the lines contain quotes, backslashes or non-ASCII text, or edit_file answers "old_string not found",
    use the code-edit skill instead; never resend the same failed edit_file:
    run_skill_script(skill_name="code-edit", file_path="scripts/edit.py", args=["lines", "path/file.py", "START", "END", "new code"])
-   (line numbers from show/read; args=["replace", "path/file.py", "old", "new"] also works). It undoes
+   ("new code" = the complete replacement lines with their indentation; line numbers from show/read;
+   args=["replace", "path/file.py", "old", "new"] also works). It undoes
    stray escaping, keeps the file's exact context lines and refuses edits that would not parse.
    Keep edits small; split large changes into several calls. Match the file's style.
    Update every twin implementation the issue implies.

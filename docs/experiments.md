@@ -1,20 +1,25 @@
 # Experiment log
 
 ## Canonical score table (the ONLY place scores are summarized)
-No row below is a Gemma 4 result or a Kaggle score. The "Model" column says exactly what produced the patch.
+The "Model" column says exactly what produced the patch. Only the first row is a Gemma 4 result. No score here is
+estimated; unmeasured cells are "–" and the status says why.
 
-| Version | Model / patch source | Harness | Tasks | Resolved | Score | Runtime | Status |
-|---|---|---|---:|---:|---:|---|---|
-| (grading control) | empty patch | local re-impl (E000) | 12 | 0 | 0.00 | – | VERIFIED |
-| (grading control) | empty patch | **official swegemma 0.2.7** (E004) | 12 | 0 | 0.00 | ~2 s/task | VERIFIED |
-| (grading control) | test-only patch | local re-impl (E002) | 12 | 0 | 0.00 | – | VERIFIED |
-| (grading control) | reference patch via tools (oracle) | local re-impl (E001) | 12 | 12 | 1.00 | – | VERIFIED |
-| (grading control) | reference patch | **official swegemma 0.2.7** (E003) | 12 | 12 | 1.00 | 1.8–4.0 s/task | VERIFIED |
-| V1 (pre-fix skills) | scripted fake model | official, subprocess sandbox | 1 | 1* | – | 4.4 s | VERIFIED pipeline test; *resolved only because the scripted edit was correct: the skills saw an empty dir (bug) |
-| V1.1 | scripted fake model | official, subprocess sandbox (E005/E006) | 1 | 1 | – | 3.9 s | VERIFIED pipeline test (no model quality measured) |
-| V0 | **real Gemma 4** | official | – | – | – | – | TODO (blocked: no GPU/endpoint/credentials) |
-| V1.1 | **real Gemma 4** | official, Kaggle 4× L4 (R001-v1-smoke) | 0 run | – | – | – | TODO (blocked 2026-09-29: no Kaggle credentials; see §C) |
-| any | **Kaggle leaderboard** | – | – | – | – | – | **none: nothing submitted** |
+| Version | Model | Dataset | Tasks | Resolved | Score | Avg Runtime | Tools | Status |
+| ------- | ----- | ------- | ----: | -------: | ----: | ----------- | ----: | ------ |
+| **V1.1** (tag `v1.1-baseline`, zip `24b3fab0…`) | gemma-4-31b-it-qat-w4a16-ct | Kaggle hidden test set, public split | 58 | 4 | **0.06** | – | – | **REAL KAGGLE PUBLIC SCORE** (2026-09-29; 4/58 derived from the truncation arithmetic, docs/public_research.md) |
+| V1.2 (`experiment/v1.2`) | gemma-4-31b-it-qat-w4a16-ct | – | – | – | – | – | – | TODO: not run with the real model, not submitted |
+| V0 | gemma-4-31b-it-qat-w4a16-ct | – | – | – | – | – | – | TODO (no GPU/endpoint/credentials here) |
+| V1.2 (E007) | scripted fake model: escaped `old_string`, `edit_file` then `edit.py` | local case rich_4077, official swegemma 0.2.7 | 1 | 1 | – | 4.2 s | 5 | VERIFIED pipeline test (edit_file fails, edit.py edits; no model quality) |
+| V1.1 (E005/E006) | scripted fake model | local case rich_4077, official swegemma 0.2.7 | 1 | 1 | – | 3.9 s | 4 | VERIFIED pipeline test (no model quality) |
+| V1 (pre-fix skills) | scripted fake model | local case, official harness | 1 | 1* | – | 4.4 s | 4 | VERIFIED pipeline test; *resolved only because the scripted edit was correct: the skills saw an empty dir (bug) |
+| (grading control, E003) | reference patch | 12 local rich cases, official swegemma 0.2.7 | 12 | 12 | 1.00 | 1.8–4.0 s | – | VERIFIED |
+| (grading control, E004) | empty patch | 12 local rich cases, official swegemma 0.2.7 | 12 | 0 | 0.00 | ~2 s | – | VERIFIED |
+| (grading control, E001) | reference patch via tools (oracle) | 12 local rich cases, local re-impl | 12 | 12 | 1.00 | – | – | VERIFIED |
+| (grading control, E000) | empty patch | 12 local rich cases, local re-impl | 12 | 0 | 0.00 | – | – | VERIFIED |
+| (grading control, E002) | test-only patch | 12 local rich cases, local re-impl | 12 | 0 | 0.00 | – | – | VERIFIED |
+
+Component benchmarks (no model; they measure mechanisms, not resolution): M001 edit robustness, M002 edit exposure,
+L001–L008 localization. See §B and §E.
 
 Labels: **VERIFIED** = measured here, reproducible with the command given. **EXPERIMENTAL** = measured, but on a
 small or proxy setup that may not transfer. **INFERRED** = reasoning without measurement. **TODO** = not run yet.
@@ -123,4 +128,24 @@ A sub-agent (G) is kept only if it beats A by more than the noise **and** its me
 Command: `python -m g4agent.kaggle_kernel --variants root v1_nograph v1_noskills v1_oldloc v1_think v2 --n-tasks 20`.
 
 ## D. Leaderboard submissions
-None made. **No leaderboard score exists for this project.** (Submitting needs your Kaggle account; see docs/submission.md.)
+| ID | Date | Version | Archive | Public score | In tasks | Notes |
+|---|---|---|---|---:|---|---|
+| K001 | 2026-09-29 (reported) | V1.1 | `submission/v1.1/submission.zip`, sha256 `24b3fab0…` | **0.06** | 4 / 58 | REAL KAGGLE PUBLIC SCORE. Only the score is available: no per-task results, runtimes or traces |
+
+A single public score has s.d. ≈ 2.3 tasks (binomial, p ≈ 0.1, n = 58), so differences under ~3 tasks between two
+submissions aren't evidence. Record: `evaluations/results/K001-v1.1-kaggle-public/result.json`.
+
+## E. V1.2 measurements (2026-09-29; no real model)
+Full reasoning: [docs/v1_2.md](v1_2.md).
+
+| ID | What | Result | Label |
+|---|---|---|---|
+| M001 | Official `edit_file` matcher vs `code-edit/edit.py`, 600 real blocks (rich, requests, fastapi), 5 copy modes | escaped copies of quote/backslash/non-ASCII blocks: official **0/300**, edit.py **300/300** (per mode, 0 wrong); literal `\n` copies: 0/600 vs 600/600; flattened indentation: official 243/600 **silently wrong**, edit.py 6 wrong, 281 refused; clean: both 600/600 | VERIFIED (mechanism) |
+| M002 | Share of real fix hunks anchored on such lines | 41% (12 local tasks), 51% (25 recent merged PRs) | EXPERIMENTAL (small, 3 repos) |
+| E007 | Official Evaluator + scripted escaped edit on V1.2 | edit_file fails, edit.py edits, resolved | VERIFIED pipeline |
+| L008 | Localization benchmark rerun with V1.2 nav.py (regression check) | see §B | VERIFIED |
+| T003 | Tests + strict/ADK/official compile, root and all 14 variants | pass | VERIFIED |
+| R002/R003 | Real-Gemma matrix: v1_1, root, v11_budget, v12_v11budget / root, v12_analyzer, v12_reviewer, v12_both | **not run** (needs Kaggle credentials or a GPU endpoint) | TODO |
+
+The `v1_nograph`, `v1_noskills`, `v1_oldloc`, `v1_think`, `v1_baseline` ablations in §C are overlays **defined against
+V1.1**. Run them from tag `v1.1-baseline`, not on top of the V1.2 root.
