@@ -1,5 +1,24 @@
 # Public research inputs
 
+## Snapshot 3 (2026-09-30), after V1.2 scored 0.08
+Same anonymous API. New: `ListKernelSessionOutput` lists **all output files** of public notebooks, so the raw
+outputs of real-model runs could be downloaded (to `evaluations/.cache/third_party/`, git-ignored).
+Topics `topics_2026-09-30.json` (65), 13 new/updated threads dumped; notebooks list refreshed (81 recent).
+
+| Item | Finding | How used | Label |
+|---|---|---|---|
+| GraphLoc end-to-end runs 1–3 (zzgtylors) outputs | 636 full ATIF traces + patches + grader results, 106 dev tasks | failure taxonomy F001, edit/argument analysis M003, search_similar_code S001 | 3P-DATA |
+| GraphLoc-129 labels | base commit + gold files/symbols for 129 dev tasks | localization benchmark on 111 official tasks (L009–L011) | 3P-DATA |
+| Repaired graphs (woldywei) | async-aware `calls` graphs, 130 tasks | graph policies B/C/D in L009 | 3P-DATA |
+| "Shape of Doubt", "Direct Code Verifier" outputs | 48 short-cap real traces (one set thinking off) | F002 | 3P-DATA |
+| [TOP 2] Gemma EDA, LB 0.15 (kozykappa) | analyzer+coder, **thinking on (budget 4096), no eval_config caps**, short ~700-token prompt, T 0.2 | context; not adopted (unbounded runtime; confounded) | 3P |
+| 744577 | one `search_similar_code` response can exceed 100k chars → ContextWindowExceeded ends the task | S001 confirms 5/173 > 20k chars; tool stays discouraged | 3P |
+| 744354 (HOST reply) | thinking mode dropped thoughts between tool calls; host deploying a vLLM patch (09-29); no rescoring | V1.2/V1.3 run thinking off: unaffected | HOST |
+| 744272 (HOST: "addressing now") | double JSON escaping; 3P: one level of escaping fails *more* (62%) than two (22%); raw text 0% | V1.3's channel copies no old text, so it is robust to any escaping change | HOST + 3P |
+| 744566 | `thinking_budget` and `seed` never reach vLLM | consistent with our O002 | 3P |
+| 744258, 744259, 744370 (HOST) | ~120 test tasks in one 12 h run; hidden tasks validate 100% with gold patches | budget model; dev-set gold failures don't apply to the LB | HOST |
+| Rules page | skills run in the scorer's Docker container, sharing the filesystem with run_command | scope of the E008/E009 `/tmp` finding (subprocess sandbox only) | HOST |
+
 ## Snapshot 2 (2026-09-29), after V1.1 scored 0.06
 Same anonymous API (`research/kaggle/`): leaderboard `leaderboard_public_2026-09-29.json` (922 teams),
 71 public notebooks (16 new ones fetched), 59 discussion topics (22 new or updated ones dumped).

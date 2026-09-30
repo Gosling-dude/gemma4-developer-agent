@@ -6,8 +6,11 @@ estimated; unmeasured cells are "–" and the status says why.
 
 | Version | Model | Dataset | Tasks | Resolved | Score | Avg Runtime | Tools | Status |
 | ------- | ----- | ------- | ----: | -------: | ----: | ----------- | ----: | ------ |
+| **V1.2** (tag `v1.2-baseline`, zip `b446da1c…`) | gemma-4-31b-it-qat-w4a16-ct | Kaggle hidden test set, public split | 58 | 5 | **0.08** | – | – | **REAL KAGGLE PUBLIC SCORE** (reported 2026-09-30; **current baseline**; +1 task vs V1.1 is within noise) |
 | **V1.1** (tag `v1.1-baseline`, zip `24b3fab0…`) | gemma-4-31b-it-qat-w4a16-ct | Kaggle hidden test set, public split | 58 | 4 | **0.06** | – | – | **REAL KAGGLE PUBLIC SCORE** (2026-09-29; 4/58 derived from the truncation arithmetic, docs/public_research.md) |
-| V1.2 (`experiment/v1.2`) | gemma-4-31b-it-qat-w4a16-ct | – | – | – | – | – | – | TODO: not run with the real model, not submitted |
+| V1.3 (`experiment/v1.3`, zip `9f74b068…`) | gemma-4-31b-it-qat-w4a16-ct | – | – | – | – | – | – | TODO: not run with the real model, not submitted (docs/v1_3.md) |
+| V1.3 (E008) | scripted fake model: heredoc + `code-edit lines @/tmp`, one deliberate off-by-one | local case rich_4077, official swegemma 0.2.7 | 1 | 1 | – | 4.1 s | 7 | VERIFIED pipeline test (no model quality) |
+| GraphLoc base+skill agents (F001, **not ours**) | gemma-4-31b-it-qat-w4a16-ct (3P runs) | official public dev set | 636 runs (106 tasks) | 187 | 0.29 | 19.4 min | 25.1 | 3P-DATA: real model, other agents; used for the failure taxonomy only |
 | V0 | gemma-4-31b-it-qat-w4a16-ct | – | – | – | – | – | – | TODO (no GPU/endpoint/credentials here) |
 | V1.2 (E007) | scripted fake model: escaped `old_string`, `edit_file` then `edit.py` | local case rich_4077, official swegemma 0.2.7 | 1 | 1 | – | 4.2 s | 5 | VERIFIED pipeline test (edit_file fails, edit.py edits; no model quality) |
 | V1.1 (E005/E006) | scripted fake model | local case rich_4077, official swegemma 0.2.7 | 1 | 1 | – | 3.9 s | 4 | VERIFIED pipeline test (no model quality) |
@@ -149,3 +152,24 @@ Full reasoning: [docs/v1_2.md](v1_2.md).
 
 The `v1_nograph`, `v1_noskills`, `v1_oldloc`, `v1_think`, `v1_baseline` ablations in §C are overlays **defined against
 V1.1**. Run them from tag `v1.1-baseline`, not on top of the V1.2 root.
+
+## F. V1.3 measurements (2026-09-30; real-model data from third parties, no own GPU run)
+Full records (ID / variant / hypothesis / change / tasks / resolved / score / runtime / tool calls / failure
+categories / conclusion): [docs/v1_3.md §2](v1_3.md). Hypotheses: [docs/v1_3_hypotheses.md](v1_3_hypotheses.md).
+
+| ID | What | Result | Label |
+|---|---|---|---|
+| K002 | V1.2 on Kaggle | **0.08 = 5/58** | REAL KAGGLE PUBLIC SCORE |
+| F001 | failure taxonomy of 636 real GraphLoc runs (`evaluations/analysis/failure_{records,taxonomy}_F001.*`) | largest class: **no source edit before the budget ran out, 179/449 failures**; edit_file fails 49% of 1,689 calls | 3P-DATA |
+| F002 | 48 real short-cap runs (thinking off / small caps) | edit_file 130/143 failed; 11/16 looped; 9/16 never edited | 3P-DATA |
+| S001 | search_similar_code in 173 real calls | 86% empty, phrase queries never return results; → policy B | 3P-DATA |
+| L009 | localization, 111 official dev tasks, graph policies A–D | nav @1/3/5 0.477/0.622/0.721 vs grep 0.297 @1; B ≈ A, C ≤ A, D @1 0.360 → policy A | EXPERIMENTAL |
+| L010–L012 | term-filter ablations (none / env+url / +exc / +pr); local regression check | all within ±2 of 111; L012 = L006 | EXPERIMENTAL |
+| E008 | V1.3 edit channel in the official Evaluator | resolved; found + fixed the subprocess-sandbox `/tmp` mapping | VERIFIED pipeline |
+| E009 | V1.2 vs V1.3 repro path, subprocess sandbox | V1.2 `can't open file '/tmp/repro.py'`; V1.3 runs it | VERIFIED pipeline |
+| T004 | tests + official compile of root and variants v1_2, v13_channel, v12_* | 96 pass; all compile; v1_2 rebuilds `b446da1c…` | VERIFIED |
+| R004/R005 | real-Gemma matrices (V1.2 vs v13_channel vs V1.3; V1.2 + specialists) | **not run** | TODO |
+
+The `v12_*` single-change variants (`v11_budget`, `v12_v11budget`) overlay the root, which is now V1.3: package
+them from tag `v1.2-baseline` for V1.2 ablations. `v1_2`, `v12_analyzer`, `v12_reviewer`, `v12_both` are pinned to
+V1.2's prompt and code-edit skill and stay exact on this branch (tests/test_variants.py).

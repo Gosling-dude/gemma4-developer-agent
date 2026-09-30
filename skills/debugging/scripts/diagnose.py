@@ -131,9 +131,24 @@ def repeat_count(argv):
     return seen.count(key)
 
 
+def sandbox_path(a):
+    """The subprocess sandbox rewrites /tmp in run_command text to its own dir ($TMPDIR) but not skill
+    arguments, so a /tmp/repro.py written with run_command lives under $TMPDIR. Docker: /tmp is /tmp."""
+    tmp = os.environ.get("TMPDIR")
+    if a.startswith("/tmp/") and tmp and not os.path.exists(a):
+        alt = os.path.join(tmp, a[len("/tmp/"):])
+        if os.path.exists(alt):
+            return alt
+    return a
+
+
 def main(argv):
     if argv and argv[0] == "--":
         argv = argv[1:]
+    if argv[:1] == ["run"]:
+        argv = argv[:1] + [sandbox_path(a) for a in argv[1:]]
+    elif argv[:1] == ["cmd"]:
+        argv = argv[:1] + [re.sub(r"(?<![\w.-])/tmp/[^\s'\"]+", lambda m: sandbox_path(m.group(0)), a) for a in argv[1:]]
     try:
         if argv[:1] in (["run"], ["cmd"]) and repeat_count(argv):
             emit("NOTE: identical call already made with nothing changed since; the result is the same. Change approach.")

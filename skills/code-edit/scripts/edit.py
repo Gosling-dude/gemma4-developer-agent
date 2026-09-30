@@ -4,6 +4,8 @@ Usage (args is a list of strings):
   edit.py replace PATH OLD NEW          replace the unique block OLD with NEW
   edit.py lines PATH START END NEW      replace lines START..END (1-indexed, inclusive) with NEW;
                                         END = START-1 inserts NEW before line START; NEW "" deletes
+  OLD or NEW may be @/tmp/FILE: the text is read from that file (one trailing newline dropped), so the
+  code itself can be written with a run_command heredoc and the edit call carries only short arguments.
 
 Why this exists: harness tool results reach the model JSON-escaped twice, so text copied from
 read_file/run_command output often carries stray escapes (\\" for ", \\n for a newline, \\uXXXX for
@@ -40,6 +42,8 @@ LIMIT = 4500
 PROTECTED_NAMES = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
 _ESC = re.compile(r"\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2}|.)", re.S)
 _SIMPLE = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "'": "'", "\\": "\\", "/": "/"}
+# "@/tmp/new.txt": text from a file. A decorator ("@property") never matches: it has no "/" after "@".
+_ARGFILE = re.compile(r"^@(/tmp/[^\s]+)$")
 
 
 def git(*args, timeout=30):
@@ -53,6 +57,10 @@ def repeat_count(argv):
     """How often this exact call already ran with the repository and argument files unchanged (0 = new)."""
     state = git("rev-parse", "HEAD") + git("status", "--porcelain") + git("diff")
     for a in argv:
+        if _ARGFILE.match(a):
+            a = a[1:]
+            if not os.path.isfile(a) and os.environ.get("TMPDIR"):
+                a = os.path.join(os.environ["TMPDIR"], a[len("/tmp/"):])
         if a.startswith("/") and os.path.isfile(a):
             try:
                 state += hashlib.sha1(open(a, "rb").read()).hexdigest()
@@ -254,11 +262,59 @@ def cmd_lines(args):
     lines = content.split(nl)
     if a < 1 or a > len(lines) + 1 or b < a - 1 or b > len(lines):
         return f"NOT EDITED: line range {a}-{b} is outside the file (1-{len(lines)})"
+    dup = boundary_duplicate(lines, a, b, new)
+    if dup:
+        return f"NOT EDITED: {dup}"
     results = []
     for _, n in variants(new):
         new_lines = [] if n == "" else n.replace("\r\n", "\n").split("\n")
         results.append(nl.join(lines[:a - 1] + new_lines + lines[b:]))
     return commit(path, content, results, f"replaced lines {a}-{b}")
+
+
+def boundary_duplicate(lines, a, b, new):
+    """Off-by-one check: NEW starts with the line just above START or ends with the line just below END.
+    That line is kept by the edit, so it would appear twice. Only distinctive lines (>= 10 chars) count."""
+    new_lines = [x for x in new.replace("\r\n", "\n").split("\n")]
+    body = [x for x in new_lines if x.strip()]
+    if not body:
+        return None
+    first, last = canon(body[0]), canon(body[-1])
+    if a >= 2 and len(first) >= 10 and first == canon(lines[a - 2]):
+        return (f"NEW starts with line {a - 1} ({lines[a - 2].strip()[:60]!r}), which is outside START..END and "
+                f"would appear twice. Use START={a - 1}, or drop that line from NEW.")
+    if b < len(lines) and len(last) >= 10 and last == canon(lines[b]):
+        return (f"NEW ends with line {b + 1} ({lines[b].strip()[:60]!r}), which is outside START..END and "
+                f"would appear twice. Use END={b + 1}, or drop that line from NEW.")
+    return None
+
+
+def load_argfiles(args):
+    """Replace @/tmp/FILE arguments by the file's text; (args, error)."""
+    out = []
+    for x in args:
+        m = _ARGFILE.match(x)
+        if not m:
+            out.append(x)
+            continue
+        # The subprocess sandbox rewrites "/tmp" in run_command text to its own tmp dir ($TMPDIR) but can't
+        # rewrite skill arguments, so look there too. In the Docker sandbox /tmp is simply /tmp.
+        cands = [m.group(1)]
+        if os.environ.get("TMPDIR"):
+            cands.append(os.path.join(os.environ["TMPDIR"], m.group(1)[len("/tmp/"):]))
+        found = next((c for c in cands if os.path.isfile(c)), None)
+        try:
+            with open(found or cands[0], encoding="utf-8", errors="replace", newline="") as fh:
+                text = fh.read()
+        except OSError:
+            return None, (f"{m.group(1)} does not exist. Write it first, e.g. run_command: "
+                          f"cat > {m.group(1)} <<'EOF' ... EOF")
+        text = text[:-1] if text.endswith("\n") else text
+        lines = text.split("\n")
+        if len(lines) > 1 and lines[-1].strip() == "EOF":  # an indented terminator bash didn't recognise
+            text = "\n".join(lines[:-1])
+        out.append(text)
+    return out, None
 
 
 def commit(path, before, results, how):
@@ -295,7 +351,8 @@ def main(argv):
     if repeat_count(argv):
         note = "NOTE: identical call already made with the code unchanged; the result is the same. Change approach.\n"
     try:
-        out = COMMANDS[argv[0]](argv[1:])
+        args, err = load_argfiles(argv[1:])
+        out = f"NOT EDITED: {err}" if err else COMMANDS[argv[0]](args)
     except FileNotFoundError:
         out = f"NOT EDITED: {argv[1]} does not exist (paths are relative to the repository root)."
     except Exception as exc:  # never crash the agent's turn on a helper bug

@@ -12,6 +12,8 @@ call, write one or two sentences saying what you learned and what you'll check n
 - No pip install and no network access; everything needed is already installed.
 - Never run the full test suite. Always name test files or test node ids.
 - Make an edit early. When the budget runs out, whatever is in the working tree is graded; no edit scores zero.
+  Your first edit must land by tool call 12. At call 12 without an edit: if you know the file and the
+  function, edit now with your best hypothesis (you can refine it or revert with git checkout -- FILE later).
 
 # Workflow (about 12–20 tool calls in total)
 1. UNDERSTAND (no tool call). Write a brief of at most five short lines, then act:
@@ -38,14 +40,19 @@ call, write one or two sentences saying what you learned and what you'll check n
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
 5. EDIT. Make the smallest change that implements the rule behind the issue, not a special case for the
    example. Know the target file, the symbol, and why the current code is wrong before editing.
-   Use edit_file with an old_string copied exactly from show/read output (a few unique lines).
-   If the lines contain quotes, backslashes or non-ASCII text, or edit_file answers "old_string not found",
-   use the code-edit skill instead; never resend the same failed edit_file:
-   run_skill_script(skill_name="code-edit", file_path="scripts/edit.py", args=["lines", "path/file.py", "START", "END", "new code"])
-   ("new code" = the complete replacement lines with their indentation; line numbers from show/read;
-   args=["replace", "path/file.py", "old", "new"] also works). It undoes
-   stray escaping, keeps the file's exact context lines and refuses edits that would not parse.
-   Keep edits small; split large changes into several calls. Match the file's style.
+   Edit in two short steps; this avoids copying old text, which fails often:
+   a. run_command: write the complete replacement lines, with their exact indentation, to a file
+      (the closing EOF alone at the start of its line):
+      cat > /tmp/new.txt <<'EOF'
+      ...replacement lines...
+      EOF
+   b. run_skill_script(skill_name="code-edit", file_path="scripts/edit.py", args=["lines", "path/file.py", "START", "END", "@/tmp/new.txt"])
+      START..END = the lines being replaced, numbered as in your latest show/read output (END = START-1
+      inserts before START). It refuses edits that would not parse or that duplicate the line above START
+      or below END; read its message, fix START/END or the file, and retry once.
+   Use edit_file only for a single-line change with no quote, backslash or backtick in it.
+   Never resend an edit that failed; change the arguments. Keep edits small; split large changes into
+   several edits (re-read line numbers after each one). Match the file's style.
    Update every twin implementation the issue implies.
 6. VERIFY (2–4 calls). Rerun the repro. Then run the most related existing tests:
    run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["related", "path/or/Symbol"])
@@ -62,7 +69,9 @@ call, write one or two sentences saying what you learned and what you'll check n
 - get_status and submit_patch are free. Check get_status after about 10 calls.
 - With 8 or fewer tool calls or under 90 seconds left: stop exploring, finish the edit, run one check,
   then submit_patch.
-- Never repeat an identical tool call. If a call returned nothing useful (e.g. git grep exit code 1 means
+- Never repeat an identical tool call. Before any call, ask: what new information will it give? If none,
+  act instead. Don't re-read lines you already have unless you edited them since; they are still above.
+  If a call returned nothing useful (e.g. git grep exit code 1 means
   "no match"), change the query, the file or the approach. Two failed variants of the same idea: move on.
   A skill output starting with "NOTE: identical call" means nothing changed since you last ran it.
 - If a command times out, don't repeat it unchanged; narrow it.

@@ -1,5 +1,11 @@
 # Budget model
 
+**V1.3 (2026-09-30): caps unchanged (5.5 min / 80 / 100), worst case 11.17 h for 116 tasks, 11.55 h for 120.**
+Host confirmed ~120 test tasks (~60 public + ~60 private) scored in one 12-hour run (discussion 744258).
+Expected-case projection and the cost of the extra heredoc call per edit: [v1_3.md §4](v1_3.md).
+New per-call timings (3P-DATA, real runs): thinking off 5.45 s/call (sequential, 5-min cap); thinking on
+15–21 s/call (4.5-min cap), ~45–70 s/call with 12 agents per server (GraphLoc). Thinking stays off.
+
 Labels: VERIFIED (host statement or official source code), MEASURED-LOCAL (measured here, different hardware),
 3P (third-party report), ESTIMATE (planning number, not measured).
 
