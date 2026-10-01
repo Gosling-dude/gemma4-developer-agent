@@ -269,7 +269,33 @@ def cmd_lines(args):
     for _, n in variants(new):
         new_lines = [] if n == "" else n.replace("\r\n", "\n").split("\n")
         results.append(nl.join(lines[:a - 1] + new_lines + lines[b:]))
-    return commit(path, content, results, f"replaced lines {a}-{b}")
+    out = commit(path, content, results, f"replaced lines {a}-{b}")
+    if out.startswith("NOT EDITED: the result would not parse"):
+        out += "\n" + range_hint(content, lines, a, b, new)
+    return out
+
+
+def range_hint(content, lines, a, b, new):
+    """Real runs (R005): a refused `lines` edit was resent unchanged 8 times. Say which range would fit."""
+    hints = []
+    first = next((x for x in new.split("\n") if x.strip()), "")
+    if first:
+        lo, hi = max(1, a - 15), min(len(lines), b + 15)
+        scored = [(difflib.SequenceMatcher(None, canon(first), canon(lines[i - 1])).ratio(), i) for i in range(lo, hi + 1)]
+        best, i = max(scored)
+        if best >= 0.6 and i != a:
+            hints.append(f"line {i} looks most like the first line of NEW ({lines[i - 1].strip()[:60]!r}); did you mean START={i}?")
+    try:  # the statement(s) that contain START..END
+        tree = ast.parse(content)
+        spans = [(n.lineno, n.end_lineno) for n in ast.walk(tree) if isinstance(n, ast.stmt)
+                 and n.lineno <= b and (n.end_lineno or n.lineno) >= a and not hasattr(n, "body")]
+        if spans:
+            s, e = min(x for x, _ in spans), max(y for _, y in spans)
+            if (s, e) != (a, b):
+                hints.append(f"the statement(s) at {a}-{b} span lines {s}-{e}; replace all of them (START={s} END={e}).")
+    except SyntaxError:
+        pass
+    return "HINT: " + " ".join(hints) if hints else "HINT: re-read the lines with nav.py read and check START/END."
 
 
 def boundary_duplicate(lines, a, b, new):

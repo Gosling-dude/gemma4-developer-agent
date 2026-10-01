@@ -162,6 +162,17 @@ def test_diagnose_runs_repro_from_sandbox_tmpdir(repo, tmp_path, monkeypatch):
     assert "exit=0" in out and "REPRO RAN" in out
 
 
+def test_parse_refusal_suggests_statement_range(repo, tmp_path):
+    """R005 rich_2725: replacing one line of a multi-line call broke the syntax; say which lines to replace."""
+    src = repo / SRC
+    src.write_text(src.read_text() + "\n\nVALUE = max(\n    1,\n    2,\n)\n")
+    lines = src.read_text().split("\n")
+    s = next(i for i, x in enumerate(lines, 1) if x.startswith("VALUE = max("))
+    out = run(EDIT, ["lines", SRC, str(s + 1), str(s + 1), "    1),"], repo, tmp_path)
+    assert out.startswith("NOT EDITED: the result would not parse") and "HINT:" in out
+    assert f"START={s} END={s + 3}" in out, out
+
+
 def test_replace_old_and_new_from_tmp_files(repo, tmp_path):
     old = _tmpfile("        return low  # BUG: should return high")
     new = _tmpfile("        return high")
