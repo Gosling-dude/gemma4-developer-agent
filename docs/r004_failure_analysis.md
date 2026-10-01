@@ -54,5 +54,56 @@ vLLM (bypassing ADK/LiteLLM) and records `ok`, latency and whether the process i
 prints the vLLM log tail; the full vLLM log is saved as `g4_results/vllm_server.log`; each task row records
 the first model response time. Runs can be pinned to explicit tasks without the gold-control phase.
 
-## 4. Isolated re-runs (fresh server each, same 3 tasks: rich_2725, rich_2943, rich_3043)
-See §5 (filled from R005/R006).
+## 4. Isolated re-runs (separate Kaggle kernels, fresh vLLM server each, same 3 tasks)
+Tasks rich_2725, rich_2943, rich_3043; no gold-control phase; direct vLLM probe before/after each task.
+Per-task table: `python3 scripts/smoke_summary.py evaluations/results/<EXP>`.
+
+| | R005 V1.3 (archive `9f74b068…`) | R006 V1.2 (archive `b446da1c…`) |
+|---|---|---|
+| probes (before/after every task) | all ok, 0.08–0.09 s, server alive | all ok, 0.08–0.09 s, server alive |
+| first model response | 18.0 / 4.1 / 3.7 s | 17.3 / 3.2 / 3.5 s |
+| tool calls | 80 / 24 / 42 | 20 / 51 / 85 |
+| first successful edit (call) | 79 (edit_file) / 13 (code-edit lines) / 14 (code-edit lines) | 14 / 46 / 65 (all edit_file) |
+| resolved | rich_2725 ✓, rich_2943 ✓, rich_3043 ✗ (wrong fix) | rich_2725 ✓, rich_2943 ✓, rich_3043 ✗ (no patch at the call cap) |
+| **V1.3 executes normally?** | **yes** | (control) |
+
+**R005 conclusion:** with a healthy server, V1.3 makes real model calls and tool calls from the first step. This
+confirms §3: R004's zeros came from the shared session, not from V1.3.
+
+### What the real V1.3 traces showed about the edit channel (R005)
+- **Skill loading works:** `load_skill("repo-navigation")` was the first call in 2 tasks; `code-edit`'s `edit.py` ran
+  and returned `EDITED` diffs (4 successful `lines @/tmp/new.txt` edits).
+- **Full chain verified on rich_2943** (resolved, 24 calls, 77 s): nav `find` → `show` → repro heredoc (fails as
+  the issue describes) → `show __eq__` → heredoc `/tmp/new.txt` → `code-edit lines 664 666 @/tmp/new.txt`
+  (EDITED) → repro passes → `tests.py related` → `tests.py run tests/test_style.py` (26 passed) → second
+  `lines` edit → repro + tests → `review.py` → `submit_patch` (400 chars) → graded resolved.
+- **Defect 1: steps merged.** In all 3 tasks the model sometimes put the step-b text `run_skill_script(...)`
+  *inside* the step-a `run_command` (bash syntax error after the heredoc). The heredoc file was still written,
+  and the next call made the edit, so this cost calls, not edits.
+- **Defect 2: wrong range, resent identically.** rich_2725: `lines 867 867` split a multi-line statement;
+  `edit.py` refused ("'(' was never closed"); the model resent the identical call 8× despite the repeat
+  notice, then used `edit_file` at call 79 of 80 (resolved on the last calls).
+- Fix (commit `48ca961`, archive `2091fc86…`): the prompt now says "two SEPARATE tool calls; the run_command
+  contains only the heredoc", "START..END = all lines of the statement(s)", and "if code-edit refuses the same
+  edit twice, re-read or use edit_file"; `edit.py` appends a HINT to parse refusals with the best-matching
+  nearby line and the full START/END span of the enclosing statement(s). Unit-tested; official pipeline E008
+  re-run on the new archive: resolved.
+
+## 5. R007: V1.2 vs fixed V1.3, matched 8 tasks, separate kernels (fresh server each)
+Tasks rich_3006, 3052, 3061, 3063, 3067, 3105, 3180, 3278 (the R005/R006 tasks were held out).
+V1.2 archive `b446da1c…`; V1.3 archive `2091fc86…` (commit `48ca961`).
+
+| | V1.2 (R007-v12-control) | V1.3 (R007-v13-root) |
+|---|---|---|
+| probes before/after every task | 16/16 ok (0.08–0.09 s) | 16/16 ok (0.08–0.09 s) |
+| tasks with model output | 8/8 (first response 3.6–8.2 s) | 8/8 (first response 3.5–7.7 s) |
+| resolved | **1/8** (rich_3006) | **2/8** (rich_3006, rich_3067) |
+| tasks with a successful source edit | 3/8 (all edit_file) | 3/8 (2 via code-edit lines, 1 edit_file) |
+| time-cap hits | 3 | 3 |
+
+1 vs 2 of 8 is noise; R007 shows V1.3 **executes normally** and does not establish that it is better.
+
+Edit-channel events in V1.3 (R007): 15 heredoc writes, of which **10 still contained the merged
+`run_skill_script(...)` text** despite the prompt fix (open defect: costs one call each, the file is still written);
+code-edit: 4 EDITED, 8 refused (3 refusals carried the new HINT). 5 of 8 tasks in *both* variants never landed an
+edit: the dominant failure is still exploration without an edit, in V1.2 as much as in V1.3.
