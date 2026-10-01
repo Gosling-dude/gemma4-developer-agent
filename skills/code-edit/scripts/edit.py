@@ -278,14 +278,18 @@ def cmd_lines(args):
 def range_hint(content, lines, a, b, new):
     """Real runs (R005): a refused `lines` edit was resent unchanged 8 times. Say which range would fit."""
     hints = []
+    best = 0.0
     first = next((x for x in new.split("\n") if x.strip()), "")
     if first:
         lo, hi = max(1, a - 15), min(len(lines), b + 15)
         scored = [(difflib.SequenceMatcher(None, canon(first), canon(lines[i - 1])).ratio(), i) for i in range(lo, hi + 1)]
         best, i = max(scored)
         if best >= 0.6 and i != a:
-            hints.append(f"line {i} looks most like the first line of NEW ({lines[i - 1].strip()[:60]!r}); did you mean START={i}?")
-    try:  # the statement(s) that contain START..END
+            hints.append(f"line {i} looks most like the first line of NEW ({lines[i - 1].strip()[:60]!r}); "
+                         f"did you mean START={i} END={i + (b - a)}?")
+    try:  # the statement(s) that contain START..END; skipped when NEW clearly belongs on another line
+        if best >= 0.85:
+            raise SyntaxError
         tree = ast.parse(content)
         spans = [(n.lineno, n.end_lineno) for n in ast.walk(tree) if isinstance(n, ast.stmt)
                  and n.lineno <= b and (n.end_lineno or n.lineno) >= a and not hasattr(n, "body")]
@@ -295,7 +299,10 @@ def range_hint(content, lines, a, b, new):
                 hints.append(f"the statement(s) at {a}-{b} span lines {s}-{e}; replace all of them (START={s} END={e}).")
     except SyntaxError:
         pass
-    return "HINT: " + " ".join(hints) if hints else "HINT: re-read the lines with nav.py read and check START/END."
+    lo, hi = max(1, a - 3), min(len(lines), b + 3)
+    cur = "\n".join(f"{n:5d}| {lines[n - 1]}" for n in range(lo, hi + 1))
+    hint = "HINT: " + " ".join(hints) if hints else "HINT: check START/END against the current lines below."
+    return f"{hint}\nCURRENT LINES {lo}-{hi} (unchanged):\n{cur}"
 
 
 def boundary_duplicate(lines, a, b, new):
@@ -374,8 +381,11 @@ def main(argv):
         print(f"NOT EDITED: {argv[1]} is a test or config file that the grader resets. Fix the library code.")
         return
     note = ""
-    if repeat_count(argv):
-        note = "NOTE: identical call already made with the code unchanged; the result is the same. Change approach.\n"
+    reps = repeat_count(argv)
+    if reps:  # an identical call with the tree unchanged can only fail again (a success would have changed it)
+        note = (f"NOT EDITED: you already sent exactly these arguments {reps} time(s) and nothing has changed, so the "
+                "result is the same. Do NOT resend them. Next call: use the START/END suggested below, re-read the "
+                "lines with nav.py read, or use edit_file for a one-line change.\n")
     try:
         args, err = load_argfiles(argv[1:])
         out = f"NOT EDITED: {err}" if err else COMMANDS[argv[0]](args)

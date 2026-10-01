@@ -80,8 +80,10 @@ all_tasks = load_tasks(TASKS_PATH)
 known_dead = set(RUN.get('exclude', []))
 pool = [t for t in all_tasks if (not RUN.get('repo') or t.repo == RUN['repo']) and t.instance_id not in known_dead]
 if RUN.get('task_ids'):
-    pool = [t for t in all_tasks if t.instance_id in set(RUN['task_ids'])]
-pool = sorted(pool, key=lambda t: t.instance_id)
+    by_id = {t.instance_id: t for t in all_tasks}
+    pool = [by_id[i] for i in RUN['task_ids'] if i in by_id]  # keep the requested order
+if not RUN.get('task_ids'):
+    pool = sorted(pool, key=lambda t: t.instance_id)
 candidates = pool[: RUN['n_candidates']]
 print(f'{len(all_tasks)} tasks in dataset; candidates: {[t.instance_id for t in candidates]}')
 '''
@@ -178,22 +180,27 @@ class GoldEvaluator(Evaluator):
         return task.patch, None, SessionTrace()
 
 def first_response_s(trace_path):
+    """Seconds from session start to the first model output (first agent step); None if none arrived."""
     try:
         steps = json.loads(Path(trace_path).read_text()).get('steps', [])
-        t0 = next((s.get('extra') or {}).get('elapsed_s') for s in steps if s.get('source') == 'agent')
-        return t0
     except Exception:
         return None
+    for s in steps:
+        if s.get('source') == 'agent':
+            return (s.get('extra') or {}).get('elapsed_s')
+    return None
 
 def record(r, variant, t_start, t_end):
-    return {'first_response_s': first_response_s(str(getattr(r, 'trace_json_path', '') or '')),'variant': variant, 'instance_id': r.instance_id, 'repo': r.repo, 'resolved': bool(r.resolved),
+    trace = str(getattr(r, 'trace_json_path', '') or '')
+    return {'variant': variant, 'instance_id': r.instance_id, 'repo': r.repo, 'resolved': bool(r.resolved),
+            'first_response_s': first_response_s(trace),
             'test_exit_code': r.test_exit_code, 'patch_chars': len(r.agent_patch or ''),
             'patch_files': sorted(set(l[6:].split()[0] for l in (r.agent_patch or '').splitlines()
                                       if l.startswith('+++ b/'))),
             'tool_calls': getattr(r, 'tool_calls', None), 'llm_calls': getattr(r, 'total_llm_calls', None),
             'total_tokens': getattr(r, 'total_tokens', None), 'status': getattr(r, 'status', None),
             'duration_s': round(r.duration_seconds or 0, 1), 'error': r.error, 'start': t_start, 'end': t_end,
-            'trace': str(getattr(r, 'trace_json_path', '') or ''), 'patch': r.agent_patch or '',
+            'trace': trace, 'patch': r.agent_patch or '',
             'test_tail': (r.test_output or '')[-1500:]}
 
 sound = candidates
@@ -225,6 +232,11 @@ for name, agent_dir in AGENTS.items():
               'dur=', rows[-1]['duration_s'], 'err=', (rows[-1]['error'] or '')[:120])
         with (OUT / f'{name}_task_results.jsonl').open('a') as fh:
             fh.write(json.dumps(rows[-1]) + '\n')
+        gate = RUN.get('gate_after')
+        if gate and i == gate and len(sound) > gate and not all((x['tool_calls'] or 0) > 0 for x in rows):
+            print(f'GATE: stopping {name} after {gate} tasks: not every task made tool calls', flush=True)
+            summary.setdefault('gate_stopped', []).append(name)
+            break
     n = len(rows)
     summary['variants'][name] = {'tasks': n, 'resolved': sum(x['resolved'] for x in rows),
         'mean_duration_s': round(sum(x['duration_s'] for x in rows) / n, 1) if n else None,
@@ -308,12 +320,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--exclude", nargs="*", default=["rich_3472", "rich_3486"],
                     help="tasks reported unsolvable on the py3.13 grader (discussion 743973)")
     ap.add_argument("--no-gold-control", action="store_true")
+    ap.add_argument("--gate-after", type=int, default=None,
+                    help="after this many tasks, continue only if every task so far made tool calls")
     ap.add_argument("--slug", default="g4-real-eval")
     ap.add_argument("--out", type=Path, default=PROJECT / "build" / "kaggle_real_eval")
     args = ap.parse_args(argv)
     run = {"n_tasks": args.n_tasks, "n_candidates": args.n_candidates or args.n_tasks + 3, "repo": args.repo,
            "task_ids": args.task_ids, "exclude": args.exclude, "gold_control": not args.no_gold_control,
-           "variants": args.variants}
+           "variants": args.variants, "gate_after": args.gate_after}
     out = build(args.variants, run, args.out, args.slug, args.slug)  # Kaggle derives the slug from the title
     print(f"kernel written to {out}\n  set the id in kernel-metadata.json (replace {{KAGGLE_USERNAME}}), then:\n"
           f"  kaggle kernels push -p {out}")

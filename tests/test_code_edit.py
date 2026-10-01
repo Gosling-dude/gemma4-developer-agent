@@ -84,10 +84,11 @@ def test_lines_mode_replace_insert_delete(repo, tmp_path):
 
 def test_repeat_notice_only_when_nothing_changed(repo, tmp_path):
     args = ["replace", SRC, "no such text anywhere", "x"]
-    assert "NOTE: identical call" not in run(EDIT, args, repo, tmp_path)
-    assert "NOTE: identical call" in run(EDIT, args, repo, tmp_path)
+    msg = "already sent exactly these arguments"
+    assert msg not in run(EDIT, args, repo, tmp_path)
+    assert msg in run(EDIT, args, repo, tmp_path)
     run(EDIT, ["replace", SRC, "return low  # BUG: should return high", "return high"], repo, tmp_path)
-    assert "NOTE: identical call" not in run(EDIT, args, repo, tmp_path)  # the tree changed in between
+    assert msg not in run(EDIT, args, repo, tmp_path)  # the tree changed in between
 
 
 def test_nav_read_numbered_range_and_repeat_notice(repo, tmp_path):
@@ -207,3 +208,21 @@ def test_lines_boundary_duplicate_is_refused(repo, tmp_path):
     assert src.read_text() == before
     out = run(EDIT, ["lines", SRC, str(n - 1), str(n), above + "\n        return high"], repo, tmp_path)
     assert out.startswith("EDITED"), out
+
+
+def test_repeated_refused_lines_edit_is_directive_and_shows_lines(repo, tmp_path):
+    """R005 rich_2725: the same refused `lines` edit was sent 8 times. The repeat must say what to do instead,
+    show the current numbered lines and a full START/END, and still write nothing."""
+    src = repo / SRC
+    src.write_text(src.read_text() + "\n\nVALUE = max(\n    first_argument_value,\n    2,\n)\n")
+    before = src.read_text()
+    lines = before.split("\n")
+    s = next(i for i, x in enumerate(lines, 1) if x.startswith("VALUE = max("))
+    args = ["lines", SRC, str(s + 2), str(s + 2), "    first_argument_value),"]  # wrong line, breaks the call
+    first = run(EDIT, args, repo, tmp_path)
+    assert first.startswith("NOT EDITED: the result would not parse")
+    assert f"START={s + 1} END={s + 1}" in first and "CURRENT LINES" in first and f"{s + 1:5d}|" in first
+    again = run(EDIT, args, repo, tmp_path)
+    assert again.startswith("NOT EDITED: you already sent exactly these arguments 1 time(s)")
+    assert "Do NOT resend" in again and "CURRENT LINES" in again
+    assert src.read_text() == before

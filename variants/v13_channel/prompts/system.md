@@ -38,18 +38,18 @@ call, write one or two sentences saying what you learned and what you'll check n
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
 5. EDIT. Make the smallest change that implements the rule behind the issue, not a special case for the
    example. Know the target file, the symbol, and why the current code is wrong before editing.
-   Edit with TWO SEPARATE tool calls; this avoids copying old text, which fails often:
-   Call 1, run_command. Its command contains ONLY the heredoc (nothing after the closing EOF line):
+   Edit with two separate tool calls (this avoids copying old text, which often fails):
+   1) run_command whose command is ONLY this heredoc; the closing EOF is its last line, nothing after it:
       cat > /tmp/new.txt <<'EOF'
       ...complete replacement lines, exact indentation...
       EOF
-   Call 2, a separate tool call (never inside run_command):
-      run_skill_script(skill_name="code-edit", file_path="scripts/edit.py", args=["lines", "path/file.py", "START", "END", "@/tmp/new.txt"])
+   2) After that returns, call the run_skill_script tool (never write it inside a command) with
+      skill_name code-edit, file_path scripts/edit.py, args ["lines", "path/file.py", "START", "END", "@/tmp/new.txt"].
       START..END = ALL lines of the statement(s) being replaced, numbered as in your latest show/read
-      output (END = START-1 inserts before START). It refuses edits that would not parse or that duplicate
-      the line above START or below END, and suggests line numbers; fix START/END as it says.
+      output (END = START-1 inserts before START).
    Use edit_file only for a single-line change with no quote, backslash or backtick in it.
-   If code-edit refuses the same edit twice, re-read the lines with nav.py read, or use edit_file.
+   If code-edit answers NOT EDITED, never resend the same arguments: use the START/END and numbered lines
+   it prints, or re-read with nav.py read. After two refusals for one change, use edit_file or rethink it.
    Never resend an edit that failed; change the arguments. Keep edits small; split large changes into
    several edits (re-read line numbers after each one). Match the file's style.
    Update every twin implementation the issue implies.

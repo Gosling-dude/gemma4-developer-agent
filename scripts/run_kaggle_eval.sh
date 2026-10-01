@@ -23,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --wait-hours) WAIT_H=$2; shift 2;;
     --task-ids) shift; EXTRA+=(--task-ids); while [[ $# -gt 0 && $1 != --* ]]; do EXTRA+=("$1"); shift; done;;
     --no-gold-control) EXTRA+=(--no-gold-control); shift;;
+    --gate-after) EXTRA+=(--gate-after "$2"); shift 2;;
     *) echo "unknown arg $1" >&2; exit 2;;
   esac
 done
