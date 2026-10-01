@@ -109,6 +109,33 @@ server.start()
 SERVER_START_S = round(time.time() - t0, 1)
 models = server.create_model_registry(aliases=[TARGET], model_prefix='openai/', api_key='EMPTY')
 print(f'vLLM up in {SERVER_START_S}s (tp={tp}, gpus={gpu_count})')
+
+import urllib.request
+def server_log_path():
+    return getattr(server, 'log_path', None)
+
+def probe(label, timeout=120):
+    """Direct request to vLLM, bypassing ADK/LiteLLM: tells a wedged server apart from a stuck client."""
+    body = json.dumps({'model': MODEL_DIR, 'messages': [{'role': 'user', 'content': 'Reply with OK.'}],
+                       'max_tokens': 8, 'temperature': 0,
+                       'chat_template_kwargs': {'enable_thinking': False}}).encode()
+    t = time.time()
+    try:
+        req = urllib.request.Request('http://127.0.0.1:8000/v1/chat/completions', data=body,
+                                     headers={'content-type': 'application/json'})
+        out = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+        res = {'ok': True, 's': round(time.time() - t, 2), 'text': out['choices'][0]['message'].get('content')}
+    except Exception as e:
+        res = {'ok': False, 's': round(time.time() - t, 2), 'error': f'{type(e).__name__}: {e}'[:300]}
+    res['server_alive'] = server.process is not None and server.process.poll() is None
+    print('probe', label, res, flush=True)
+    if not res['ok']:
+        lp = server_log_path()
+        if lp and Path(lp).exists():
+            print('---- vLLM log tail ----\n' + Path(lp).read_text(errors='replace')[-6000:], flush=True)
+    return res
+
+PROBE_START = probe('after-start')
 '''
 
 CELL_EVAL = r'''
@@ -150,8 +177,16 @@ class GoldEvaluator(Evaluator):
         from adk_eval_core.tracing import SessionTrace
         return task.patch, None, SessionTrace()
 
+def first_response_s(trace_path):
+    try:
+        steps = json.loads(Path(trace_path).read_text()).get('steps', [])
+        t0 = next((s.get('extra') or {}).get('elapsed_s') for s in steps if s.get('source') == 'agent')
+        return t0
+    except Exception:
+        return None
+
 def record(r, variant, t_start, t_end):
-    return {'variant': variant, 'instance_id': r.instance_id, 'repo': r.repo, 'resolved': bool(r.resolved),
+    return {'first_response_s': first_response_s(str(getattr(r, 'trace_json_path', '') or '')),'variant': variant, 'instance_id': r.instance_id, 'repo': r.repo, 'resolved': bool(r.resolved),
             'test_exit_code': r.test_exit_code, 'patch_chars': len(r.agent_patch or ''),
             'patch_files': sorted(set(l[6:].split()[0] for l in (r.agent_patch or '').splitlines()
                                       if l.startswith('+++ b/'))),
@@ -180,9 +215,12 @@ for name, agent_dir in AGENTS.items():
     ev = Evaluator(make_config(agent_dir, OUT / name))
     rows = []
     for i, t in enumerate(sound, 1):
+        pb = probe(f'{name}/{t.instance_id}/before')
         ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         r = run_sync(lambda: ev.evaluate_task(task=t, task_index=i, total_tasks=len(sound)))
         rows.append(record(r, name, ts, time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())))
+        rows[-1]['probe_before'] = pb
+        rows[-1]['probe_after'] = probe(f'{name}/{t.instance_id}/after')
         print(name, t.instance_id, 'resolved=', rows[-1]['resolved'], 'calls=', rows[-1]['tool_calls'],
               'dur=', rows[-1]['duration_s'], 'err=', (rows[-1]['error'] or '')[:120])
         with (OUT / f'{name}_task_results.jsonl').open('a') as fh:
@@ -217,6 +255,10 @@ for f in OUT.glob('*_task_results.jsonl'):
 (OUT / 'tool_calls_digest.json').write_text(json.dumps(digest, indent=1)[:20_000_000])
 shutil.make_archive('/kaggle/working/g4_results_bundle', 'zip', OUT)
 print('wrote', OUT, 'and g4_results_bundle.zip')
+lp = server_log_path()
+if lp and Path(lp).exists():
+    shutil.copy(lp, OUT / 'vllm_server.log')
+    shutil.make_archive('/kaggle/working/g4_results_bundle', 'zip', OUT)
 try: server.stop()
 except Exception: pass
 '''
