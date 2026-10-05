@@ -433,12 +433,14 @@ def check_eval_config(root: Path, report: Report) -> None:
             report.error(f"eval_config.yaml: evaluation.{key} must be a positive number")
     minutes = ev.get("max_time_minutes", rules.HARNESS_DEFAULT_TIME_MINUTES)
     if isinstance(minutes, (int, float)):
-        projected = rules.EXPECTED_TEST_TASKS * (minutes + rules.ASSUMED_SETUP_MINUTES_PER_TASK) / 60
-        msg = (f"worst-case sequential run: {rules.EXPECTED_TEST_TASKS} tasks x "
-               f"({minutes} + ~{rules.ASSUMED_SETUP_MINUTES_PER_TASK} setup) min = {projected:.1f} h "
+        def hours(n):
+            return (rules.ASSUMED_SERVER_START_MINUTES + n * (minutes + rules.ASSUMED_SETUP_MINUTES_PER_TASK)) / 60
+        expected, bound = hours(rules.EXPECTED_TEST_TASKS), hours(rules.TEST_TASKS_UPPER_BOUND)
+        msg = (f"worst case (every task hits the {minutes} min cap): {expected:.2f} h for "
+               f"{rules.EXPECTED_TEST_TASKS} tasks, {bound:.2f} h for {rules.TEST_TASKS_UPPER_BOUND}, "
                f"of {rules.RUN_BUDGET_HOURS:.0f} h")
-        if projected > rules.RUN_BUDGET_HOURS:
-            report.warn(msg + " -> EXCEEDS the run budget if tasks run sequentially")
+        if bound > rules.RUN_BUDGET_HOURS:
+            report.error(msg + " -> can EXCEED the run budget; exceeding it errors the whole submission")
         else:
             report.info.append(msg)
     ts = ev.get("timeout_seconds")

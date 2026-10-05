@@ -9,6 +9,8 @@ around the innermost frames that are *inside the repository*. Library frames are
 is rarely where the fix goes.
 """
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -66,6 +68,13 @@ def show_context(rel, lineno, func, radius=4):
         emit(f"{mark}{i:5d}| {lines[i - 1]}")
 
 
+def git(*args, timeout=30):
+    try:
+        return subprocess.run(["git", "-C", WS, *args], capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def run(cmd, shell=False, timeout=60):
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
@@ -99,10 +108,50 @@ def run(cmd, shell=False, timeout=60):
         emit("\n(no repository frames in the traceback; the failure may be an assertion in your script)")
 
 
+def repeat_count(argv):
+    """How often this exact call already ran with the repository and argument files unchanged (0 = new)."""
+    state = git("rev-parse", "HEAD") + git("status", "--porcelain") + git("diff")
+    for a in argv:
+        if a.startswith("/") and os.path.isfile(a):
+            try:
+                state += hashlib.sha1(open(a, "rb").read()).hexdigest()
+            except OSError:
+                pass
+    key = hashlib.sha1(json.dumps([WS, os.path.basename(__file__), argv, state]).encode()).hexdigest()
+    path = os.environ.get("G4AGENT_STATE", "/tmp/.g4agent_calls")
+    try:
+        seen = open(path).read().split()
+    except OSError:
+        seen = []
+    try:
+        with open(path, "a") as fh:
+            fh.write(key + "\n")
+    except OSError:
+        pass
+    return seen.count(key)
+
+
+def sandbox_path(a):
+    """The subprocess sandbox rewrites /tmp in run_command text to its own dir ($TMPDIR) but not skill
+    arguments, so a /tmp/repro.py written with run_command lives under $TMPDIR. Docker: /tmp is /tmp."""
+    tmp = os.environ.get("TMPDIR")
+    if a.startswith("/tmp/") and tmp and not os.path.exists(a):
+        alt = os.path.join(tmp, a[len("/tmp/"):])
+        if os.path.exists(alt):
+            return alt
+    return a
+
+
 def main(argv):
     if argv and argv[0] == "--":
         argv = argv[1:]
+    if argv[:1] == ["run"]:
+        argv = argv[:1] + [sandbox_path(a) for a in argv[1:]]
+    elif argv[:1] == ["cmd"]:
+        argv = argv[:1] + [re.sub(r"(?<![\w.-])/tmp/[^\s'\"]+", lambda m: sandbox_path(m.group(0)), a) for a in argv[1:]]
     try:
+        if argv[:1] in (["run"], ["cmd"]) and repeat_count(argv):
+            emit("NOTE: identical call already made with nothing changed since; the result is the same. Change approach.")
         if len(argv) >= 2 and argv[0] == "run":
             run([sys.executable, *argv[1:]])
         elif len(argv) >= 2 and argv[0] == "cmd":

@@ -7,7 +7,7 @@ import pytest
 from g4agent.packager import package
 
 
-@pytest.mark.parametrize("variant", [None, "v0", "v1_baseline", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2"])
+@pytest.mark.parametrize("variant", [None, "v0", "v1_baseline", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2", "v1_1", "v11_budget", "v12_v11budget", "v12_analyzer", "v12_reviewer", "v12_both"])
 def test_every_variant_packages(tmp_path: Path, variant):
     out = tmp_path / "s.zip"
     assert package(variant, out, compile_adk=True) == 0

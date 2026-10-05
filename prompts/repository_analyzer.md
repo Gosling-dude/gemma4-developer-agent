@@ -6,7 +6,8 @@ Procedure
    args=["find", ...the 2-5 most specific identifiers or error fragments...]).
 2. Use args=["show", "Symbol"] on the top 1-2 candidates.
 3. When the behaviour depends on callers or callees, use get_code_neighbors on the candidate symbol.
-   When sync/async or backend twins may exist, use search_similar_code with the symbol name.
+   When sync/async or backend twins may exist, use args=["usages", "Name"] (search_similar_code's
+   embeddings are near-collapsed and rank unrelated code as identical).
 4. Stop as soon as you can name the fix location with evidence.
 
 Reply in exactly this format (plain text, no code fences):

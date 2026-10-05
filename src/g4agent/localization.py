@@ -49,14 +49,33 @@ _KV_DUMP = re.compile(r"^\s*[\w.\-]+\s*[=:]\s*[^\s].{0,60}$")
 _ENV_HINT = re.compile(r"(python -m \S+\.diagnose|pip (freeze|list)|platform|version|environment|os:|terminal)", re.I)
 
 
+_EXC_LINE = re.compile(r"^\s*[\w.]*(Error|Exception|Warning|Exit|Interrupt)\b")  # traceback tail: keep
+
+
 def strip_environment_dump(text: str) -> str:
     """Drop issue-template environment reports (box-drawn diagnostics, key=value dumps, version lines)."""
     keep = []
     for line in text.splitlines():
-        if _BOX.search(line) or _KV_DUMP.match(line) or (_ENV_HINT.search(line) and len(line) < 100):
+        kv = _KV_DUMP.match(line) and not ("exc" in FILTERS and _EXC_LINE.match(line))
+        if _BOX.search(line) or kv or (_ENV_HINT.search(line) and len(line) < 100):
             continue
         keep.append(line)
     return "\n".join(keep)
+
+
+# Pull-request templates and social noise (official tasks are often PR descriptions): HTML comments, checklists,
+# emoji shortcodes, @mentions, issue refs, and the template's own words. Code identifiers are never matched.
+_PR_LINE = re.compile(r"^\s*([-*] \[[ xX]\]|(fixes|closes|resolves|related|see|refs?)\b.*#\d+|#+\s*(checklist|ai disclaimer|disclosure)\b)", re.I)
+_PR_INLINE = re.compile(r"<!--.*?-->|:[a-z0-9_+-]+:|(?<![\w.])@[\w-]+", re.S)
+PR_STOP = set("""here change changes discussion discussions related motivation summary description checklist please
+thanks thank pull merge merged added adds removed previously again some which there about while trying available
+released workaround details include information support update updated relevant implement implemented github
+feature features context reproduce following reported initially""".split())
+
+
+def strip_pr_template(text: str) -> str:
+    text = _PR_INLINE.sub(" ", text)
+    return "\n".join(l for l in text.splitlines() if not _PR_LINE.match(l))
 
 
 FILTERS = {"env", "urls"}  # which noise filters extract_terms applies (ablation switch)
@@ -65,6 +84,8 @@ _URLISH = re.compile(r"(readthedocs|github|\.(io|com|org|html?|md|rst|txt)$)", r
 
 def extract_terms(text: str, limit: int = 6) -> list[str]:
     """Pick specific identifiers from issue text: code spans, tracebacks, Camel/snake/dotted names."""
+    if "pr" in FILTERS:
+        text = strip_pr_template(text)
     if "env" in FILTERS:
         text = strip_environment_dump(text)
     cands: dict[str, float] = defaultdict(float)
@@ -84,6 +105,7 @@ def extract_terms(text: str, limit: int = 6) -> list[str]:
         base = term.split(".")[-1]
         dotted = "." in term
         if (not dotted and (base.lower() in STOP or len(base) < 4)) or term.lower() in STOP \
+                or ("pr" in FILTERS and not dotted and base.lower() in PR_STOP) \
                 or term.startswith(("http", "www")) or base.isdigit() or term.endswith((".py", ".com", ".org")) \
                 or ("urls" in FILTERS and _URLISH.search(term)):
             continue

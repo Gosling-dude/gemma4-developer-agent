@@ -4,6 +4,7 @@ Usage (args is a list of strings):
   nav.py find TERM [TERM ...]      rank source files by relevance to identifiers/strings from the issue
   nav.py outline PATH [PATH ...]   classes/functions of a file with line ranges
   nav.py show SYMBOL [PATH]        source of a function/class/method with line numbers
+  nav.py read PATH START [END]     numbered lines of a file (at most 120); cleaner to copy from than read_file
   nav.py usages SYMBOL             where a name is defined, called, imported (source and tests separately)
   nav.py layout                    build system, packages, test dirs, key config files
 
@@ -12,6 +13,8 @@ The repository is /workspace (or $SWE_WORKSPACE when running outside the sandbox
 """
 
 import ast
+import hashlib
+import json
 import math
 import os
 import re
@@ -257,7 +260,33 @@ def cmd_show(args):
     for i in range(a, shown_b + 1):
         emit(f"{i:5d}| {lines[i - 1]}")
     if shown_b < b:
-        emit(f"... {b - shown_b} more lines: read_file('{path}', {shown_b + 1}, {b})")
+        emit(f"... {b - shown_b} more lines: read {path} {shown_b + 1} {b}")
+
+
+def cmd_read(args):
+    if not args:
+        emit("usage: read PATH START [END]")
+        return
+    path = args[0]
+    full = path if os.path.isabs(path) else os.path.join(WS, path)
+    try:
+        with open(full, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except OSError as exc:
+        emit(f"cannot read {path}: {exc}. Use 'find' to locate the file.")
+        return
+    try:
+        a = max(1, int(args[1])) if len(args) > 1 else 1
+        b = int(args[2]) if len(args) > 2 else a + 79
+    except ValueError:
+        emit("usage: read PATH START [END]  (line numbers)")
+        return
+    b = min(b, len(lines), a + 119)
+    emit(f"{path}  lines {a}-{b} of {len(lines)}")
+    for i in range(a, b + 1):
+        emit(f"{i:5d}| {lines[i - 1]}")
+    if b < len(lines):
+        emit(f"... next: read {path} {b + 1} {min(len(lines), b + 80)}")
 
 
 # ----------------------------------------------------------------------------- usages / layout
@@ -302,7 +331,31 @@ def cmd_layout(_args):
     emit(git("log", "--oneline", "-3").strip())
 
 
-COMMANDS = {"find": cmd_find, "outline": cmd_outline, "show": cmd_show, "usages": cmd_usages, "layout": cmd_layout}
+def repeat_count(argv):
+    """How often this exact call already ran with the repository and argument files unchanged (0 = new)."""
+    state = git("rev-parse", "HEAD") + git("status", "--porcelain") + git("diff")
+    for a in argv:
+        if a.startswith("/") and os.path.isfile(a):
+            try:
+                state += hashlib.sha1(open(a, "rb").read()).hexdigest()
+            except OSError:
+                pass
+    key = hashlib.sha1(json.dumps([WS, os.path.basename(__file__), argv, state]).encode()).hexdigest()
+    path = os.environ.get("G4AGENT_STATE", "/tmp/.g4agent_calls")
+    try:
+        seen = open(path).read().split()
+    except OSError:
+        seen = []
+    try:
+        with open(path, "a") as fh:
+            fh.write(key + "\n")
+    except OSError:
+        pass
+    return seen.count(key)
+
+
+COMMANDS = {"find": cmd_find, "outline": cmd_outline, "show": cmd_show, "read": cmd_read, "usages": cmd_usages,
+            "layout": cmd_layout}
 
 
 def main(argv):
@@ -311,6 +364,9 @@ def main(argv):
     if not argv or argv[0] not in COMMANDS:
         emit(__doc__)
     else:
+        if repeat_count(argv):
+            emit("NOTE: identical call already made with the code unchanged; the result is the same. "
+                 "Use what you have or try different terms.")
         try:
             COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # never crash the agent's turn on a helper bug

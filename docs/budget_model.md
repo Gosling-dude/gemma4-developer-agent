@@ -1,7 +1,28 @@
 # Budget model
 
+**V1.3 (2026-09-30): caps unchanged (5.5 min / 80 / 100), worst case 11.17 h for 116 tasks, 11.55 h for 120.**
+Host confirmed ~120 test tasks (~60 public + ~60 private) scored in one 12-hour run (discussion 744258).
+Expected-case projection and the cost of the extra heredoc call per edit: [v1_3.md §4](v1_3.md).
+New per-call timings (3P-DATA, real runs): thinking off 5.45 s/call (sequential, 5-min cap); thinking on
+15–21 s/call (4.5-min cap), ~45–70 s/call with 12 agents per server (GraphLoc). Thinking stays off.
+
 Labels: VERIFIED (host statement or official source code), MEASURED-LOCAL (measured here, different hardware),
 3P (third-party report), ESTIMATE (planning number, not measured).
+
+## 0. V1.2 update (2026-09-29): what changed and why
+| Input | Old (V1.1) | New | Source |
+|---|---|---|---|
+| Hidden tasks per run | 125 (safety margin on "about 120") | **116** (public split = 58, LB percentage 50%), checked at an upper bound of 120 | VERIFIED arithmetic on the board; Meta Kaggle `LeaderboardPercentage` 50 (3P notebook) |
+| Setup per task | 0.1–0.75 min | 0.15 min (deliberate over-estimate) | host 743663: a no-patch run takes ≈ 10 min in total |
+| Server start | 15 min | 15 min (3P measured 357 s on 4× L4) | 3P GraphLoc |
+| Time per tool call | unknown | **3.5–5.6 s** in official-harness runs (thinking off, 2 agents per server) | 3P Black Cat lab |
+| 12 h overrun | errors the submission | still errors ("Not yet" fixed) | HOST 743964 |
+| `max_output_tokens` reserves context | assumed | **no**: vLLM 0.19.1 clamps `max_tokens` to `max_model_len - input_length` | VERIFIED (`vllm/entrypoints/utils.py get_max_tokens`, tag v0.19.1) |
+
+V1.2 sets **5.5 min / 80 calls / 100 turns** (V1.1: 5.0 / 60 / 80). Worst case (every task at the cap): 11.2 h for
+116 tasks, 11.6 h for 120. The validator now **errors** if the 120-task worst case exceeds 12 h, which rules out 6.0.
+The call cap goes up with the time cap: at 3.5–5.6 s per call, V1.1's 60 calls ran out at 3.5–5.6 min, about
+when its time cap did. Full table: [docs/v1_2.md §5](v1_2.md). §§1–6 below are the V1.1 analysis, kept for history.
 
 ## 1. Global vs per-task budget
 
