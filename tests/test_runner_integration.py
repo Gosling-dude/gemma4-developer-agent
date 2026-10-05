@@ -62,7 +62,7 @@ def test_r012_handoff_end_to_end_with_scripted_model(repo: Path, tmp_path: Path)
     task = Task("toy_1", "local/toy", "HEAD", "clamp() returns the lower bound for values above `high`.")
     steps = [
         # stage 1: localizer
-        ("run_skill_script", {"skill_name": "repo-navigation", "file_path": "scripts/nav.py",
+        ("run_skill_script", {"skill_name": "repo-navigation-readonly", "file_path": "scripts/nav.py",
                               "args": ["find", "clamp"]}),
         PLAN,
         # stage 2: coder

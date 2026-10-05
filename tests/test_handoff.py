@@ -55,7 +55,7 @@ def test_coder_is_the_v13_agent():
 def test_localizer_is_read_only_and_short():
     loc = _cfg("sub_agents/localizer.yaml")
     assert not WRITE_TOOLS & set(loc["tools"])
-    assert loc["skills"] == ["skills/repo-navigation"]          # nav.py: find/show/read/usages only
+    assert loc["skills"] == ["skills/repo-navigation-readonly"]  # nav.py: find/show/read/usages only (R013)
     assert loc["output_key"] == "repair_plan"
     sampling = loc["generate_content_config"]
     assert sampling["temperature"] == 0.1
