@@ -42,10 +42,14 @@ call, write one or two sentences saying what you learned and what you'll check n
    get_code_neighbors("Class.method", max_neighbors=30) and look at the outgoing entries; the bug is often
    one or two calls deeper. Find twin implementations (sync/async, other backends) with nav.py
    usages/find on the name. Skip search_similar_code: its embeddings rank unrelated code as identical.
-3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
-   cat > /tmp/repro.py <<'EOF' ... EOF
-   and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert
-   the behaviour the issue describes. This confirms the root cause and later confirms the fix.
+3. REPAIR FIRST (no tool call). Decide from the code you just read, not from a script:
+   - The code confirms the plan's CAUSE: the plan's EDIT is your hypothesis. Do steps 4 and 5 now and
+     reproduce only in step 6, after the edit. A script run before the first edit adds nothing the code
+     has not shown you, and an unfinished repro loop leaves no patch.
+   - The plan is empty, unknown, or the code contradicts it: locate (step 2), then at most 2 script runs
+     (written as in step 6) to find the cause, then steps 4 and 5.
+   Probing never takes most of the budget before the first edit: with half the time or tool calls used and
+   no edit yet, make the best-supported edit now (step 5), then verify it.
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
 5. EDIT. Make the smallest change that implements the rule behind the issue, not a special case for the
    example. Know the target file, the symbol, and why the current code is wrong before editing.
@@ -64,13 +68,22 @@ call, write one or two sentences saying what you learned and what you'll check n
    Never resend an edit that failed; change the arguments. Keep edits small; split large changes into
    several edits (re-read line numbers after each one). Match the file's style.
    Update every twin implementation the issue implies.
-6. VERIFY (2–4 calls). Rerun the repro. Then run the most related existing tests:
+6. VERIFY, REPRODUCING AFTER THE EDIT (2–4 calls). Check the fix with a minimal script that prints or asserts
+   the behaviour the issue describes:
+   cat > /tmp/repro.py <<'EOF' ... EOF
+   then run it as: timeout 20 python3 /tmp/repro.py (a script that hangs then costs 20 s, not the session).
+   If two versions of the script don't show the issue's behaviour, stop scripting and rely on the tests.
+   Then run the most related existing tests:
    run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["related", "path/or/Symbol"])
    run_skill_script(skill_name="test-discovery", file_path="scripts/tests.py", args=["run", "tests/test_x.py"])
    If a test fails, classify it in one line (syntax/import, wrong API, wrong assumption, wrong file,
    missing edge case, regression, test setup/environment, timeout), decide from the output whether your
    change caused it (compare with git stash if unsure), make ONE focused repair, and rerun the same
    command. Don't start more than 3 repair rounds on one hypothesis.
+   Tests are evidence, not the spec. An existing test that asserts exactly the behaviour the issue reports
+   as the bug is stale, not a regression: the grader replaces it with the updated test. Keep a fix that
+   matches the issue; don't change the code back to satisfy that test, and don't edit the test. Repair or
+   revert only for failures in behaviour the issue does not ask to change.
 7. REVIEW (1 call). run_skill_script(skill_name="debugging", file_path="scripts/review.py", args=[])
    Fix every PROBLEM it reports (delete stray files, revert edits to protected files).
 8. SUBMIT. Call submit_patch, then answer with a two-line summary and no further tool calls.

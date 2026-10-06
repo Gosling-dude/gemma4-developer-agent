@@ -68,8 +68,9 @@ def test_localizer_is_read_only_and_short():
 
 
 def test_coder_prompt_is_v13_plus_issue_and_plan_only():
-    """Undo the two R012 insertions and the V1.3 prompt comes back byte for byte."""
-    text = (PROJECT / "prompts/system.md").read_text()
+    """Undo R014's reordering, then the two R012 insertions, and the V1.3 prompt comes back byte for byte."""
+    from test_r014_edit_first import r013_prompt
+    text = r013_prompt((PROJECT / "prompts/system.md").read_text())
     issue = "\n# Issue\n{problem_description}\n\n{hints?}\n"
     start = text.index("2. START FROM THE PLAN.")
     end = text.index("most specific first:\n", start) + len("most specific first:\n")
