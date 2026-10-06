@@ -272,6 +272,7 @@ def check_agents(tree: AgentTree, report: Report) -> None:
             for sk in re.findall(r'skill_name="([a-z0-9-]+)"', instr):
                 if not any(str(x).rstrip("/").endswith("/" + sk) or str(x) == sk for x in cfg.get("skills") or []):
                     report.warn(f"{where}: instruction uses skill {sk!r} which this agent does not declare")
+        check_undeclared_tool_mentions(root, where, instr, tool_names, cfg.get("skills") or [], report)
 
         if node.via == "root":
             if "submit_patch" not in tool_names:
@@ -326,6 +327,44 @@ def check_adapter(root: Path, where: str, adapter: Any, report: Report) -> None:
                 report.error(f"adapters/{adapter}: peft_type must be LORA")
         except (ValueError, TypeError) as exc:
             report.error(f"adapters/{adapter}: bad adapter_config.json: {exc}")
+
+
+# --------------------------------------------------------------------------- undeclared tools
+_SKILL_TEXT_SUFFIXES = (".md", ".txt")
+
+
+def check_undeclared_tool_mentions(root: Path, where: str, instr: Any, tool_names: list[str], skills: list,
+                                   report: Report) -> None:
+    """An agent must never be shown how to call a harness tool it does not have.
+
+    google-adk 1.36.1 raises ValueError on a call to an unregistered tool, the harness ends the task with no
+    patch, and the submission format has no callback that could catch it (empty callback registry in
+    adk-submission 0.2.11). R012's localizer crashed 2/24 tasks this way after its skill doc recommended
+    run_command. So: skill docs may not name a missing tool at all, and the instruction may not show one in
+    call form (a bare prohibition such as "never call run_command" stays a warning, above).
+    """
+    missing = sorted(rules.HARNESS_TOOLS - set(tool_names))
+    if not missing:
+        return
+    if isinstance(instr, str):
+        for t in missing:
+            if re.search(rf"\b{t}\s*\(", instr):
+                report.error(f"{where}: instruction shows a call to {t!r}, which this agent does not have "
+                             "(an undeclared tool call ends the task)")
+    for s in skills:
+        if not isinstance(s, str):
+            continue
+        skill_dir = root / s
+        if not skill_dir.is_dir():
+            continue  # reported by check_skill / the loader
+        for p in sorted(skill_dir.rglob("*")):
+            if not p.is_file() or p.suffix.lower() not in _SKILL_TEXT_SUFFIXES:
+                continue
+            text = p.read_text(errors="replace")
+            for t in missing:
+                if re.search(rf"\b{t}\b", text):
+                    report.error(f"{where}: skill file {p.relative_to(root).as_posix()} names tool {t!r}, which "
+                                 "this agent does not have (an undeclared tool call ends the task)")
 
 
 # --------------------------------------------------------------------------- skills
@@ -433,12 +472,14 @@ def check_eval_config(root: Path, report: Report) -> None:
             report.error(f"eval_config.yaml: evaluation.{key} must be a positive number")
     minutes = ev.get("max_time_minutes", rules.HARNESS_DEFAULT_TIME_MINUTES)
     if isinstance(minutes, (int, float)):
-        projected = rules.EXPECTED_TEST_TASKS * (minutes + rules.ASSUMED_SETUP_MINUTES_PER_TASK) / 60
-        msg = (f"worst-case sequential run: {rules.EXPECTED_TEST_TASKS} tasks x "
-               f"({minutes} + ~{rules.ASSUMED_SETUP_MINUTES_PER_TASK} setup) min = {projected:.1f} h "
+        def hours(n):
+            return (rules.ASSUMED_SERVER_START_MINUTES + n * (minutes + rules.ASSUMED_SETUP_MINUTES_PER_TASK)) / 60
+        expected, bound = hours(rules.EXPECTED_TEST_TASKS), hours(rules.TEST_TASKS_UPPER_BOUND)
+        msg = (f"worst case (every task hits the {minutes} min cap): {expected:.2f} h for "
+               f"{rules.EXPECTED_TEST_TASKS} tasks, {bound:.2f} h for {rules.TEST_TASKS_UPPER_BOUND}, "
                f"of {rules.RUN_BUDGET_HOURS:.0f} h")
-        if projected > rules.RUN_BUDGET_HOURS:
-            report.warn(msg + " -> EXCEEDS the run budget if tasks run sequentially")
+        if bound > rules.RUN_BUDGET_HOURS:
+            report.error(msg + " -> can EXCEED the run budget; exceeding it errors the whole submission")
         else:
             report.info.append(msg)
     ts = ev.get("timeout_seconds")

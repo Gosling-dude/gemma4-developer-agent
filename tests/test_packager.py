@@ -7,7 +7,7 @@ import pytest
 from g4agent.packager import package
 
 
-@pytest.mark.parametrize("variant", [None, "v0", "v1_baseline", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2"])
+@pytest.mark.parametrize("variant", [None, "v0", "v1_baseline", "v1_think", pytest.param("v1_nograph", marks=pytest.mark.xfail(strict=True, reason="R013 guard: its skills name graph tools this V1.1 ablation removes (latent undeclared-tool crash); variants are not built from this branch")), "v1_noskills", "v1_oldloc", "v2", "v1_1", "v11_budget", "v12_v11budget", "v12_analyzer", "v12_reviewer", "v12_both"])
 def test_every_variant_packages(tmp_path: Path, variant):
     out = tmp_path / "s.zip"
     assert package(variant, out, compile_adk=True) == 0
@@ -17,7 +17,7 @@ def test_every_variant_packages(tmp_path: Path, variant):
     assert not any("__pycache__" in n or "/." in n for n in names)
 
 
-@pytest.mark.parametrize("variant", [None, "v0", "v1_think", "v1_nograph", "v1_noskills", "v1_oldloc", "v2"])
+@pytest.mark.parametrize("variant", [None, "v0", "v1_think", pytest.param("v1_nograph", marks=pytest.mark.xfail(strict=True, reason="R013 guard: its skills name graph tools this V1.1 ablation removes (latent undeclared-tool crash); variants are not built from this branch")), "v1_noskills", "v1_oldloc", "v2"])
 def test_variant_prompts_only_reference_available_tools(tmp_path: Path, variant):
     from g4agent.validator import validate_zip
     out = tmp_path / "s.zip"

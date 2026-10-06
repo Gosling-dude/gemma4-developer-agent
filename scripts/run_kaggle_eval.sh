@@ -14,13 +14,16 @@
 # No step is retried after an error: fix the cause, then rerun with a NEW --exp-id if results were written.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-EXP="" VARIANTS=(root) NTASKS=3 WAIT_H=6 POLL_S=120
+EXP="" VARIANTS=(root) NTASKS=3 WAIT_H=6 POLL_S=120 EXTRA=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --exp-id) EXP=$2; shift 2;;
     --variants) shift; VARIANTS=(); while [[ $# -gt 0 && $1 != --* ]]; do VARIANTS+=("$1"); shift; done;;
     --n-tasks) NTASKS=$2; shift 2;;
     --wait-hours) WAIT_H=$2; shift 2;;
+    --task-ids) shift; EXTRA+=(--task-ids); while [[ $# -gt 0 && $1 != --* ]]; do EXTRA+=("$1"); shift; done;;
+    --no-gold-control) EXTRA+=(--no-gold-control); shift;;
+    --gate-after) EXTRA+=(--gate-after "$2"); shift 2;;
     *) echo "unknown arg $1" >&2; exit 2;;
   esac
 done
@@ -50,7 +53,7 @@ echo "$ACCESS" | head -3
 echo "== 3/6 build notebook (${VARIANTS[*]}, $NTASKS tasks)"
 SLUG="g4-$(echo "$EXP" | tr 'A-Z_.' 'a-z--')"
 BUILD=build/kaggle_$EXP
-.venv/bin/python -m g4agent.kaggle_kernel --variants "${VARIANTS[@]}" --n-tasks "$NTASKS" --slug "$SLUG" --out "$BUILD" \
+.venv/bin/python -m g4agent.kaggle_kernel --variants "${VARIANTS[@]}" --n-tasks "$NTASKS" --slug "$SLUG" --out "$BUILD" ${EXTRA[@]+"${EXTRA[@]}"} \
   | grep -E "sha256|VALID|kernel written" || { echo "FAIL: notebook build" >&2; exit 2; }
 .venv/bin/python - "$BUILD/kernel-metadata.json" "$USER_NAME" <<'EOF'
 import json, sys

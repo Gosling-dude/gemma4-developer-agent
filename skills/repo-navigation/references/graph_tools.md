@@ -5,7 +5,7 @@ repository. Node ids are fully-qualified Python paths such as `pkg.module.Class.
 
 | Tool | Use it when | Don't use it when |
 |---|---|---|
-| `search_similar_code(query, k)` | You know a symbol name and want related/sibling implementations (e.g. the sync twin of an async function, the other encoder). | For natural-language queries: it only resolves **symbol names** already in the index. |
+| `search_similar_code(query, k)` | Avoid. The official embeddings are near-collapsed (unrelated nodes at similarity 1.0; discussion 744040); use `nav.py usages`/`find` for twins. | For natural-language queries: it only resolves **symbol names** already in the index. |
 | `get_code_neighbors(node, edge_type, max_neighbors)` | You'll change a function's behaviour or signature and need its **callers** (who else is affected) or **callees** (where the value really comes from). | The fix is local to one function body. |
 | `get_code_subgraph(nodes)` | You have 3–8 candidate symbols and want to see how they connect before picking the fix location. | You have one candidate. |
 

@@ -1,4 +1,23 @@
-# Final submission audit (V1.1, 2026-09-28)
+# Final submission audit
+
+## V1.3 candidate (2026-09-30) — NOT submitted
+Archive `submission/v1.3/submission.zip`: 19 files, 76,418 bytes unpacked, 35,250 bytes zipped,
+sha256 `9f74b068d35d5da601cf7d12888627fd5889e2c5eb85d48d9b66a167508c3bd1`; branch `experiment/v1.3`.
+
+| Check | Result | How |
+|---|---|---|
+| Byte-reproducible | same sha256 from two independent `g4agent.packager` runs | `package_submission.sh` twice |
+| Official `validate_directory` + `compile_submission` (adk-submission 0.2.11, swegemma 0.2.7) | **pass**: LlmAgent `swe_coder`, 9 tools + SkillToolset | `scripts/official_check.py submission/v1.3/submission.zip` |
+| Strict validator + google-adk 1.36.1 compile; 12 h projection | **pass**; worst case 11.17 h (116 tasks) / 11.55 h (120) | `g4agent.validator … --compile` |
+| Unzipped contents equal the committed sources (prompt, edit.py, eval_config) | **equal** | `diff` against the tree |
+| Extensions, secrets, absolute paths, symlinks, `..` | **none found** | member scan (this section's command log) |
+| Official Evaluator end to end with a scripted model on the **exact archive** | **resolved** (E008) | `scripts/official_pipeline_test.py` |
+| Unit/integration tests | **96 pass** | `scripts/validate.sh` |
+| Real-model behaviour | **not measured** | no GPU/credentials (docs/v1_3.md §3) |
+
+---
+
+## V1.1 (2026-09-28)
 
 Archive: `submission/submission.zip`, 17 files, 51,552 bytes unpacked, 28 KB zipped,
 sha256 `24b3fab0b3761fc52fc036bee60b3fdaf571ff58c277cd4f058b839454af0f2a` (deterministic: same sources, same hash).

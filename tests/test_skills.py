@@ -9,7 +9,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 
 
 def run(script: str, args: list[str], ws: Path, tmp_path: Path) -> str:
-    env = dict(os.environ, SWE_WORKSPACE=str(ws), PYTHONPATH=str(ws))
+    env = dict(os.environ, SWE_WORKSPACE=str(ws), PYTHONPATH=str(ws), G4AGENT_STATE=str(tmp_path / "calls"))
     cwd = tmp_path / "skillcwd"
     cwd.mkdir(exist_ok=True)
     r = subprocess.run([sys.executable, str(PROJECT / "skills" / script), *args], cwd=cwd, env=env,

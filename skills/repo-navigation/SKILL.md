@@ -13,6 +13,7 @@ Run with `run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.
 | Rank files for issue terms | `["find", "ClassName", "func_name", "exact error text"]` |
 | Outline a file with line ranges | `["outline", "pkg/module.py"]` |
 | Show a symbol's source with line numbers | `["show", "Class.method"]` or `["show", "func", "pkg/module.py"]` |
+| Numbered lines of a file (max 120) | `["read", "pkg/module.py", "120", "180"]` |
 | Where a name is defined, used, tested | `["usages", "func_name"]` |
 | Build system, packages, test dirs | `["layout"]` |
 
@@ -23,6 +24,7 @@ Run with `run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.
    environment/version dumps, URLs or doc links. In our benchmark, noisy terms halved top-1 accuracy.
 2. `find` with those terms. Files with a DEFINITION hit and a high score are the candidates.
 3. `show` the candidate symbol. It returns up to 120 numbered lines, which saves `read_file` calls.
+   Use `read` for other ranges: its output is escaped once, read_file's twice, so edits copied from it match.
 4. If the named API only delegates, follow its **outgoing calls** with
    `get_code_neighbors("Class.method")`; the fix is often 1–2 calls deeper (e.g. `Text.from_ansi` →
    `AnsiDecoder` in another module). `usages` and the other graph tools are covered in `references/graph_tools.md`.

@@ -11,6 +11,8 @@ tests/test_utils.py or tests/test_utils.py::test_parse. The report puts the coun
 each failure's assertion/exception and the innermost repository frames.
 """
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -236,12 +238,37 @@ def cmd_info(_args):
 COMMANDS = {"related": cmd_related, "run": cmd_run, "info": cmd_info}
 
 
+def repeat_count(argv):
+    """How often this exact call already ran with the repository and argument files unchanged (0 = new)."""
+    state = git("rev-parse", "HEAD") + git("status", "--porcelain") + git("diff")
+    for a in argv:
+        if a.startswith("/") and os.path.isfile(a):
+            try:
+                state += hashlib.sha1(open(a, "rb").read()).hexdigest()
+            except OSError:
+                pass
+    key = hashlib.sha1(json.dumps([WS, os.path.basename(__file__), argv, state]).encode()).hexdigest()
+    path = os.environ.get("G4AGENT_STATE", "/tmp/.g4agent_calls")
+    try:
+        seen = open(path).read().split()
+    except OSError:
+        seen = []
+    try:
+        with open(path, "a") as fh:
+            fh.write(key + "\n")
+    except OSError:
+        pass
+    return seen.count(key)
+
+
 def main(argv):
     if argv and argv[0] == "--":
         argv = argv[1:]
     if not argv or argv[0] not in COMMANDS:
         emit(__doc__)
     else:
+        if argv[0] == "run" and repeat_count(argv):
+            emit("NOTE: identical call already made with nothing changed since; the result is the same. Change approach.")
         try:
             COMMANDS[argv[0]](argv[1:])
         except Exception as exc:

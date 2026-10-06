@@ -6,11 +6,15 @@ sandbox, and is graded SWE-bench style: the patch has to make hidden tests pass.
 
 > New to this? Start with [docs/getting_started.md](docs/getting_started.md).
 
-**Status (2026-09-28, session 2):** current version **V1.1** (`submission/submission.zip`). It passes the
-**official** harness's validation and compilation (swegemma 0.2.7 / adk-submission 0.2.11 from the organizers'
-wheelhouse) and runs end to end in the official Evaluator with a scripted model. **It has never been run with the real
-Gemma 4 model, and nothing has been submitted to Kaggle**: this machine has no GPU and no credentials. A ready
-real-evaluation path exists (Kaggle 4× L4 notebook or your own vLLM server). See [docs/real_baseline.md](docs/real_baseline.md).
+**Status (2026-09-30):** **V1.2 = 0.08 on the public leaderboard (current baseline; 5 of 58 tasks)**, V1.1 = 0.06
+(4 of 58); both REAL KAGGLE PUBLIC SCORES, and the difference is within noise.
+**V1.3** (branch `experiment/v1.3`, `submission/v1.3/submission.zip`, sha256 `9f74b068…`) is built and passes the
+official compiler and an official-Evaluator pipeline test. It is **not measured with the real model and not submitted**.
+It targets the largest failure class found in 636 real Gemma 4 trajectories on the dev set (others' public runs,
+re-analysed here): **no source edit ever lands** (40% of failures), with `edit_file` failing on 49% of calls. V1.3
+edits through a heredoc plus `code-edit lines … @/tmp/file` (no copied old text, short tool arguments) and adds a
+first-edit deadline. Evidence: [docs/v1_3.md](docs/v1_3.md), [docs/v1_3_hypotheses.md](docs/v1_3_hypotheses.md).
+V1.2 notes: [docs/v1_2.md](docs/v1_2.md).
 
 Session-2 fixes found by checking against the official harness: skill scripts saw an empty directory in the
 official subprocess sandbox; `timeout_seconds: 120` would also have capped the grading test run; V2's sub-agent
@@ -93,13 +97,21 @@ is the binding constraint. `variants/v2` enables code_analyzer and patch_reviewe
 |---|---|---|
 | V0 | `variants/v0/` | Baseline: 9 tools, 5-line generic prompt, no skills |
 | V1_BASELINE | git tag `v1-baseline`; `variants/v1_baseline/` | First version (thinking on, 4.5 min, 120 s timeout); see docs/v1_baseline.md |
-| **V1.1** | root | Current: V1 + thinking off, 5.0-min cap, 300 s timeout, anti-repetition rule, sandbox-safe skills |
-| Ablations | `variants/v1_nograph`, `v1_noskills`, `v1_oldloc`, `v1_think` | One variable each (docs/experiments.md §C) |
-| V2 | `variants/v2/` | V1.1 + code_analyzer and patch_reviewer AgentTools |
+| V1.1 | git tag `v1.1-baseline`; `variants/v1_1/` (byte-identical zip); `submission/v1.1/` | V1 + thinking off, 5.0-min cap, 300 s timeout, anti-repetition rule, sandbox-safe skills. **0.06 public LB** |
+| V1.2 | tag `v1.2-baseline`; `variants/v1_2/` (byte-identical zip); `submission/v1.2/` | V1.1 + `code-edit` skill, `nav.py read`, repeat notices, prompt fixes, 5.5 min / 80 calls / 100 turns ([docs/v1_2.md](docs/v1_2.md)). **0.08 public LB** |
+| **V1.3** | root on `experiment/v1.3`; `submission/v1.3/` | V1.2 + heredoc → `code-edit lines @/tmp` edit channel, off-by-one guard, sandbox `/tmp` fix, first-edit deadline, no re-reads ([docs/v1_3.md](docs/v1_3.md)) |
+| V1.3 matrix | `variants/v13_channel` (V1.2 + channel only) | isolates the edit channel |
+| V1.2 matrix | `variants/v11_budget`, `v12_v11budget` (package from tag `v1.2-baseline`), `v12_analyzer`, `v12_reviewer`, `v12_both` (pinned to V1.2) | split budget vs edit/prompt effects; sub-agents on top of V1.2 |
+| V1.1 ablations | `variants/v1_nograph`, `v1_noskills`, `v1_oldloc`, `v1_think` | One variable each **vs V1.1** (docs/experiments.md §C); run from tag `v1.1-baseline` |
+| V2 | `variants/v2/` | V1.1-era: code_analyzer and patch_reviewer AgentTools with a shorter prompt |
 
 ## Results
 The canonical score table is in [docs/experiments.md](docs/experiments.md). Summary:
-- **Real Gemma 4 resolution rate: not measured (TODO).** R001-v1-smoke attempt 1 (2026-09-29) was blocked before any task ran: no Kaggle credentials (docs/real_baseline.md). **Kaggle leaderboard: nothing submitted.**
+- **Kaggle leaderboard: V1.2 = 0.08 (5/58), V1.1 = 0.06 (4/58)** (REAL KAGGLE PUBLIC SCORES). V1.3: not submitted, not measured with Gemma.
+- Real-Gemma failure taxonomy (636 third-party dev-set runs, our classification): no source edit 40% of failures; edit_file fails on 49% of calls (docs/v1_3.md).
+- Localization on 111 official dev tasks (no LLM): nav.py @1/@3/@5 0.48/0.62/0.72 vs grep @1 0.30; graph-first policies don't help.
+- Edit robustness (M001, no model): the official `edit_file` matcher accepts 0/300 escaped copies of quote/backslash/non-ASCII blocks; `code-edit` accepts 300/300 with no wrong edits (VERIFIED mechanism).
+- Our own real Gemma 4 runs: none (no credentials/GPU here; docs/real_baseline.md).
 - Grading controls, local grader and **official** grader on 12 verified `rich` cases: empty 0/12, reference 12/12 (VERIFIED).
 - Official harness + scripted model: V1.1 skills run inside the sandbox; patch resolved (pipeline test, VERIFIED).
 - Localization benchmark (n=12, no LLM): `nav.py` recall@1 0.50 vs grep 0.08; reproduced exactly (EXPERIMENTAL; the

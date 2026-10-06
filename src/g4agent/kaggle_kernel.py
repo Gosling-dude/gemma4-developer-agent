@@ -80,8 +80,10 @@ all_tasks = load_tasks(TASKS_PATH)
 known_dead = set(RUN.get('exclude', []))
 pool = [t for t in all_tasks if (not RUN.get('repo') or t.repo == RUN['repo']) and t.instance_id not in known_dead]
 if RUN.get('task_ids'):
-    pool = [t for t in all_tasks if t.instance_id in set(RUN['task_ids'])]
-pool = sorted(pool, key=lambda t: t.instance_id)
+    by_id = {t.instance_id: t for t in all_tasks}
+    pool = [by_id[i] for i in RUN['task_ids'] if i in by_id]  # keep the requested order
+if not RUN.get('task_ids'):
+    pool = sorted(pool, key=lambda t: t.instance_id)
 candidates = pool[: RUN['n_candidates']]
 print(f'{len(all_tasks)} tasks in dataset; candidates: {[t.instance_id for t in candidates]}')
 '''
@@ -109,6 +111,33 @@ server.start()
 SERVER_START_S = round(time.time() - t0, 1)
 models = server.create_model_registry(aliases=[TARGET], model_prefix='openai/', api_key='EMPTY')
 print(f'vLLM up in {SERVER_START_S}s (tp={tp}, gpus={gpu_count})')
+
+import urllib.request
+def server_log_path():
+    return getattr(server, 'log_path', None)
+
+def probe(label, timeout=120):
+    """Direct request to vLLM, bypassing ADK/LiteLLM: tells a wedged server apart from a stuck client."""
+    body = json.dumps({'model': MODEL_DIR, 'messages': [{'role': 'user', 'content': 'Reply with OK.'}],
+                       'max_tokens': 8, 'temperature': 0,
+                       'chat_template_kwargs': {'enable_thinking': False}}).encode()
+    t = time.time()
+    try:
+        req = urllib.request.Request('http://127.0.0.1:8000/v1/chat/completions', data=body,
+                                     headers={'content-type': 'application/json'})
+        out = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+        res = {'ok': True, 's': round(time.time() - t, 2), 'text': out['choices'][0]['message'].get('content')}
+    except Exception as e:
+        res = {'ok': False, 's': round(time.time() - t, 2), 'error': f'{type(e).__name__}: {e}'[:300]}
+    res['server_alive'] = server.process is not None and server.process.poll() is None
+    print('probe', label, res, flush=True)
+    if not res['ok']:
+        lp = server_log_path()
+        if lp and Path(lp).exists():
+            print('---- vLLM log tail ----\n' + Path(lp).read_text(errors='replace')[-6000:], flush=True)
+    return res
+
+PROBE_START = probe('after-start')
 '''
 
 CELL_EVAL = r'''
@@ -150,15 +179,28 @@ class GoldEvaluator(Evaluator):
         from adk_eval_core.tracing import SessionTrace
         return task.patch, None, SessionTrace()
 
+def first_response_s(trace_path):
+    """Seconds from session start to the first model output (first agent step); None if none arrived."""
+    try:
+        steps = json.loads(Path(trace_path).read_text()).get('steps', [])
+    except Exception:
+        return None
+    for s in steps:
+        if s.get('source') == 'agent':
+            return (s.get('extra') or {}).get('elapsed_s')
+    return None
+
 def record(r, variant, t_start, t_end):
+    trace = str(getattr(r, 'trace_json_path', '') or '')
     return {'variant': variant, 'instance_id': r.instance_id, 'repo': r.repo, 'resolved': bool(r.resolved),
+            'first_response_s': first_response_s(trace),
             'test_exit_code': r.test_exit_code, 'patch_chars': len(r.agent_patch or ''),
             'patch_files': sorted(set(l[6:].split()[0] for l in (r.agent_patch or '').splitlines()
                                       if l.startswith('+++ b/'))),
             'tool_calls': getattr(r, 'tool_calls', None), 'llm_calls': getattr(r, 'total_llm_calls', None),
             'total_tokens': getattr(r, 'total_tokens', None), 'status': getattr(r, 'status', None),
             'duration_s': round(r.duration_seconds or 0, 1), 'error': r.error, 'start': t_start, 'end': t_end,
-            'trace': str(getattr(r, 'trace_json_path', '') or ''), 'patch': r.agent_patch or '',
+            'trace': trace, 'patch': r.agent_patch or '',
             'test_tail': (r.test_output or '')[-1500:]}
 
 sound = candidates
@@ -180,13 +222,21 @@ for name, agent_dir in AGENTS.items():
     ev = Evaluator(make_config(agent_dir, OUT / name))
     rows = []
     for i, t in enumerate(sound, 1):
+        pb = probe(f'{name}/{t.instance_id}/before')
         ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         r = run_sync(lambda: ev.evaluate_task(task=t, task_index=i, total_tasks=len(sound)))
         rows.append(record(r, name, ts, time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())))
+        rows[-1]['probe_before'] = pb
+        rows[-1]['probe_after'] = probe(f'{name}/{t.instance_id}/after')
         print(name, t.instance_id, 'resolved=', rows[-1]['resolved'], 'calls=', rows[-1]['tool_calls'],
               'dur=', rows[-1]['duration_s'], 'err=', (rows[-1]['error'] or '')[:120])
         with (OUT / f'{name}_task_results.jsonl').open('a') as fh:
             fh.write(json.dumps(rows[-1]) + '\n')
+        gate = RUN.get('gate_after')
+        if gate and i == gate and len(sound) > gate and not all((x['tool_calls'] or 0) > 0 for x in rows):
+            print(f'GATE: stopping {name} after {gate} tasks: not every task made tool calls', flush=True)
+            summary.setdefault('gate_stopped', []).append(name)
+            break
     n = len(rows)
     summary['variants'][name] = {'tasks': n, 'resolved': sum(x['resolved'] for x in rows),
         'mean_duration_s': round(sum(x['duration_s'] for x in rows) / n, 1) if n else None,
@@ -217,6 +267,10 @@ for f in OUT.glob('*_task_results.jsonl'):
 (OUT / 'tool_calls_digest.json').write_text(json.dumps(digest, indent=1)[:20_000_000])
 shutil.make_archive('/kaggle/working/g4_results_bundle', 'zip', OUT)
 print('wrote', OUT, 'and g4_results_bundle.zip')
+lp = server_log_path()
+if lp and Path(lp).exists():
+    shutil.copy(lp, OUT / 'vllm_server.log')
+    shutil.make_archive('/kaggle/working/g4_results_bundle', 'zip', OUT)
 try: server.stop()
 except Exception: pass
 '''
@@ -236,7 +290,7 @@ def build(variants: list[str], run: dict, out_dir: Path, slug: str, title: str) 
             zp = Path(td) / f"{v}.zip"
             if package(None if v == "root" else v, zp, compile_adk=False) != 0:
                 raise SystemExit(f"packaging failed for {v}")
-            zips["v1" if v == "root" else v] = base64.b64encode(zp.read_bytes()).decode()
+            zips[v] = base64.b64encode(zp.read_bytes()).decode()
     header = (f"RUN_JSON = {json.dumps(json.dumps(run))}\nVARIANT_ZIPS = {json.dumps(zips)}\n"
               f"MODEL_DIR = {MODEL_DIR!r}\n")
     cells = [("markdown", f"# {title}\nReal Gemma 4 evaluation with the official swegemma harness. Generated by "
@@ -266,12 +320,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--exclude", nargs="*", default=["rich_3472", "rich_3486"],
                     help="tasks reported unsolvable on the py3.13 grader (discussion 743973)")
     ap.add_argument("--no-gold-control", action="store_true")
+    ap.add_argument("--gate-after", type=int, default=None,
+                    help="after this many tasks, continue only if every task so far made tool calls")
     ap.add_argument("--slug", default="g4-real-eval")
     ap.add_argument("--out", type=Path, default=PROJECT / "build" / "kaggle_real_eval")
     args = ap.parse_args(argv)
     run = {"n_tasks": args.n_tasks, "n_candidates": args.n_candidates or args.n_tasks + 3, "repo": args.repo,
            "task_ids": args.task_ids, "exclude": args.exclude, "gold_control": not args.no_gold_control,
-           "variants": args.variants}
+           "variants": args.variants, "gate_after": args.gate_after}
     out = build(args.variants, run, args.out, args.slug, args.slug)  # Kaggle derives the slug from the title
     print(f"kernel written to {out}\n  set the id in kernel-metadata.json (replace {{KAGGLE_USERNAME}}), then:\n"
           f"  kaggle kernels push -p {out}")

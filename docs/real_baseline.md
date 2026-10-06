@@ -1,7 +1,18 @@
 # Real Gemma 4 baseline
 
-## Status: TODO (blocked). No real Gemma 4 run has been executed.
-**No real-model numbers exist, and none are reported anywhere in this project.**
+## Update 2026-09-30: V1.2 was scored by Kaggle
+**V1.2 = 0.08 REAL KAGGLE PUBLIC SCORE (= 5 of 58)**, the current baseline (record
+`evaluations/results/K002-v1.2-kaggle-public/`). Still no per-task data from Kaggle, and still no own GPU run
+(no credentials on this machine). New this session: real Gemma 4 trajectories from **third-party public runs**
+on the dev set (636 + 48 runs), re-analysed with our scripts; see docs/v1_3.md. They are other agents' runs,
+labelled 3P-DATA, and never reported as our scores.
+
+## Update 2026-09-29: V1.1 was scored by Kaggle
+**V1.1 = 0.06 REAL KAGGLE PUBLIC SCORE** (= 4 of 58 public tasks; record `evaluations/results/K001-v1.1-kaggle-public/`).
+That is the only real-model number for this project. Kaggle returns no per-task data, so the task-level table below
+is still empty. The local real-model path (R001) is still blocked on credentials; see docs/v1_2.md for V1.2.
+
+## Status of our own real runs: TODO (blocked). No real Gemma 4 run has been executed from this machine.
 
 ### R001-v1-smoke, attempt 1 (2026-09-29): blocked before any task ran
 Raw record: `evaluations/attempts/R001-v1-smoke_attempt1_2026-09-29.json`. Tasks executed: **0**. Model calls: **0**.
