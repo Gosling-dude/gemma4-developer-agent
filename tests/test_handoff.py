@@ -17,7 +17,7 @@ V13_SHA256 = {  # git show 121bd79:<path> | shasum -a 256
     "skills/repo-navigation/scripts/nav.py": "e600e8b2a91c947bea405f005cd19b39adc71eedbf8eed547a384ab23db113c2",
     "skills/repo-navigation/SKILL.md": "7d7885bd2ecaa813f8a88bc5c800f4e252d646413dd74236025c1c3cfcb997a6",
     "eval_config.yaml": "48c97a48ac1b85a7db47862f25f5b302e1fffe51ae3a3328470ae8d0d78779d5",
-    "configs/sampling.yaml": "332e8adc50a3d6b71f78974c54e251ec1b4c6d7be8df6ec54321b458c06de890",
+    # configs/sampling.yaml: R015 turns thinking on; pinned in tests/test_r015_thinking.py
 }
 V13_PROMPT_SHA256 = "b2a3fa87a02787a895335110624546a6c976880c388eb7bb3e58fb2ff5a18258"
 V13_TOOLS = ["run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch",

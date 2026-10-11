@@ -54,15 +54,14 @@ R014_CHANGES = [
 """),
 ]
 
-# Everything else the R013 control ships, pinned to its 1cbcbd7 bytes.
+# Everything else the R013 control ships, pinned to its 1cbcbd7 bytes (R015 changes only the two sampling
+# configs; those are pinned in tests/test_r015_thinking.py).
 R013_SHA256 = {
     "prompts/localizer.md": "adbdfd27e11da067a1fb6062aa44f40b7b57e1bfd69cc0da8f30b98af9b83f53",
     "agent.yaml": "3fc987282e87d1e7106d9af99c3394b170cb9b222f664afeaab1560544fc74fd",
     "sub_agents/coder.yaml": "129a5b9e0b60164fb98a5101ae7cbf267da4f5c2f8a4f925c3e84839184d7f3c",
     "sub_agents/localizer.yaml": "33e9b7d378d71fa7934505da9a5b22f10f439ca7e6430c13b3d3d0e1a3b4e709",
     "eval_config.yaml": "48c97a48ac1b85a7db47862f25f5b302e1fffe51ae3a3328470ae8d0d78779d5",
-    "configs/sampling.yaml": "332e8adc50a3d6b71f78974c54e251ec1b4c6d7be8df6ec54321b458c06de890",
-    "configs/localizer_sampling.yaml": "116dc6501c78ae34e285b8bc88696752130fb13c57a90e8684fadbb401e1a57c",
     "src/g4agent/validator.py": "63bdd3e863b86d5643e60bc5dc34659f5c29deb9ebdead3c22389975534ed019",
     "skills/repo-navigation-readonly/SKILL.md": "3ff07d453b302e76d7deaa62f58ad6b20dcfd890a66d0a1ac9674eb5bd4ded57",
     "skills/repo-navigation-readonly/scripts/nav.py": "e600e8b2a91c947bea405f005cd19b39adc71eedbf8eed547a384ab23db113c2",
