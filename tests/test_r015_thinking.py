@@ -1,4 +1,5 @@
-"""R015: R014 with Gemma thinking turned on (include_thoughts: true) in both stages; nothing else changes.
+"""R015: R014 with Gemma thinking turned on in both stages (include_thoughts: true, thinking_budget: 4096 = harness
+default); nothing else in the agent changes.
 
 Evidence (docs/r015_research.md): adk-submission's generation resolver maps include_thoughts: false to
 chat_template_kwargs.enable_thinking=false, so V1.1-R014 ran with thinking off. A controlled 129-task ablation
@@ -19,8 +20,8 @@ from g4agent.validator import validate_dir
 
 R014_REV = "1ab7c6e77736fb10397b166b5d7c85eaabe9ddb3"
 R015_SHA256 = {
-    "configs/sampling.yaml": "85f7fa32c1529cd7c17e7a136ca556e45e3cde87d1aa87ee1e9fba43b68ef103",
-    "configs/localizer_sampling.yaml": "6e66f8a3a955682ddcfae9f6b5e63bfaba018e3ff929226409b3a5ce491f4169",
+    "configs/sampling.yaml": "eaba91b18eec28488f07a29de2179121e9a2d68ac0227b12f0e60e395335f334",
+    "configs/localizer_sampling.yaml": "b4a91df46559d79c7440a7a7f5ba6234c32c5a89c7d9b5bea420882e34a44321",
 }
 
 
@@ -42,7 +43,7 @@ def test_only_change_vs_r014_is_thinking_on():
     for rel in R015_SHA256:
         new, old = _yaml((PROJECT / rel).read_text()), _yaml(_r014(rel))
         assert old["thinking_config"] == {"include_thoughts": False}
-        assert new["thinking_config"] == {"include_thoughts": True}
+        assert new["thinking_config"] == {"thinking_budget": 4096, "include_thoughts": True}
         assert {k: v for k, v in new.items() if k != "thinking_config"} == \
             {k: v for k, v in old.items() if k != "thinking_config"}          # T, top_p, top_k, max tokens unchanged
 
@@ -78,4 +79,4 @@ def test_compiled_agents_request_thinking(submission: Path):
     agents = {a.name: a for a in root.sub_agents}
     for name in ("localizer", "swe_coder"):
         tc = agents[name].generate_content_config.thinking_config
-        assert tc is not None and tc.include_thoughts is True, name
+        assert tc is not None and tc.include_thoughts is True and tc.thinking_budget == 4096, name

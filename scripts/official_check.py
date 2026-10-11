@@ -25,8 +25,19 @@ def check(sub: Path) -> int:
     from adk_submission.discovery import discover_adapters, discover_declared_models, validate_directory
     from adk_eval_core.sandbox.base import AdkSandboxCodeExecutor
     from swegemma.config import build_submission_limits
-    from swegemma.models.registry import resolve_swegemma_adapter, setup_gemma_model_registry
     from swegemma.tools import create_tools
+    try:  # swegemma <= 0.2.7
+        from swegemma.models.registry import resolve_swegemma_adapter, setup_gemma_model_registry
+    except ImportError:  # swegemma >= 0.2.11 (wheelhouse of 2026-10-09): registry built as in swegemma/cli.py
+        from swegemma.harness.agent_runner import resolve_swegemma_adapter
+
+        def setup_gemma_model_registry(api_base, adapter_manifest=None):
+            from adk_submission import ModelRegistry
+            from google.adk.models.lite_llm import LiteLlm
+            reg = ModelRegistry()
+            for m in sorted(ALLOWED_MODELS):
+                reg.register(m, LiteLlm(model=f"openai/{m}", api_base=api_base, api_key="EMPTY"))
+            return reg
 
     limits, gen = build_submission_limits()
     validate_directory(sub, limits)

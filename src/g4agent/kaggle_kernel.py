@@ -92,7 +92,14 @@ CELL_SERVER = r'''
 import litellm, torch
 from adk_submission import VllmConfig, VllmServer, discover_adapters
 from swegemma.config import ALLOWED_ADAPTER_EXTENSIONS, EvalConfig, build_submission_limits
-from swegemma.models.discovery import validate_single_declared_model
+try:
+    from swegemma.models.discovery import validate_single_declared_model
+except ImportError:  # swegemma >= 0.2.11 (wheelhouse of 2026-10-09) moved model discovery to adk_submission
+    from adk_submission.discovery import discover_declared_models
+    def validate_single_declared_model(d):
+        found = {m.strip() for m in discover_declared_models(d)}
+        assert len(found) == 1, f'expected exactly one declared model, got {sorted(found)}'
+        return found.pop()
 litellm.drop_params = True
 TARGET = 'gemma-4-31b-it-qat-w4a16-ct'
 declared = {n: validate_single_declared_model(d) for n, d in AGENTS.items()}
