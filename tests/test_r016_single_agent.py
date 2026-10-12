@@ -229,3 +229,106 @@ def test_timeout_wrapped_repro_does_not_stall_the_session(repo: Path, tmp_path: 
     hang = ("run_command", {"command": "timeout 2 python3 -c 'while True: pass'"})
     outcome, _ = _run([FIND, fix, hang, ("submit_patch", {}), "Done."], repo, tmp_path)
     assert outcome.stop_reason == "submitted" and "return high" in outcome.patch
+
+
+# --------------------------------------------------- coverage carried over from the retired R012-R015 modules
+
+V13_PROMPT_SHA256 = "b2a3fa87a02787a895335110624546a6c976880c388eb7bb3e58fb2ff5a18258"   # 121bd79 (R009/V1.3)
+
+# R014's three prompt changes as they read in R016 (step 3 no longer refers to a plan): (V1.3 text, R016 text).
+R014_CHANGES_IN_R016 = [
+    ("""3. REPRODUCE (1–2 calls, strongly recommended). Write a minimal script with run_command, e.g.
+   cat > /tmp/repro.py <<'EOF' ... EOF
+   and run it with the debugging skill: args=["run", "/tmp/repro.py"]. The script should print or assert
+   the behaviour the issue describes. This confirms the root cause and later confirms the fix.
+""", """3. REPAIR FIRST (no tool call). Decide from the code you just read, not from a script:
+   - The code shows why the behaviour is wrong: that is your hypothesis. Do steps 4 and 5 now and
+     reproduce only in step 6, after the edit. A script run before the first edit adds nothing the code
+     has not shown you, and an unfinished repro loop leaves no patch.
+   - The code you read does not show the cause: at most 2 script runs (written as in step 6) to find it,
+     then steps 4 and 5.
+   Probing never takes most of the budget before the first edit: with half the time or tool calls used and
+   no edit yet, make the best-supported edit now (step 5), then verify it.
+"""),
+    ("""6. VERIFY (2–4 calls). Rerun the repro. Then run the most related existing tests:""",
+     """6. VERIFY, REPRODUCING AFTER THE EDIT (2–4 calls). Check the fix with a minimal script that prints or asserts
+   the behaviour the issue describes:
+   cat > /tmp/repro.py <<'EOF' ... EOF
+   then run it as: timeout 20 python3 /tmp/repro.py (a script that hangs then costs 20 s, not the session).
+   If two versions of the script don't show the issue's behaviour, stop scripting and rely on the tests.
+   Then run the most related existing tests:"""),
+    ("""   command. Don't start more than 3 repair rounds on one hypothesis.
+""", """   command. Don't start more than 3 repair rounds on one hypothesis.
+   Tests are evidence, not the spec. An existing test that asserts exactly the behaviour the issue reports
+   as the bug is stale, not a regression: the grader replaces it with the updated test. Keep a fix that
+   matches the issue; don't change the code back to satisfy that test, and don't edit the test. Repair or
+   revert only for failures in behaviour the issue does not ask to change.
+"""),
+]
+
+
+def test_prompt_is_v13_plus_only_the_r014_repair_first_changes():
+    """(from test_handoff + test_r014) Without the plan handoff, R016 = the V1.3 prompt + R014's three changes."""
+    text = _prompt()
+    for old, new in R014_CHANGES_IN_R016:
+        assert text.count(new) == 1, new[:60]
+        text = text.replace(new, old, 1)
+    assert hashlib.sha256(text.encode()).hexdigest() == V13_PROMPT_SHA256
+
+
+def test_stale_bug_encoding_tests_do_not_revert_a_fix():
+    """(from test_r014) rich_3470: a gold-equivalent fix was reverted to satisfy a test that encoded the bug."""
+    verify = _prompt()[_prompt().index("6. VERIFY"):_prompt().index("7. REVIEW")]
+    for rule in ("Tests are evidence, not the spec", "stale, not a regression",
+                 "don't change the code back to satisfy that test", "don't edit the test"):
+        assert rule in verify, rule
+
+
+def test_nothing_the_agent_sees_names_a_tool_it_lacks():
+    """(from test_r013, generalized from the localizer) Instruction and skills only show registered tools."""
+    from g4agent import rules
+    import re
+    root = _root()
+    missing = set(rules.HARNESS_TOOLS) - set(root["tools"])
+    texts = [_prompt()] + [p.read_text() for s in root["skills"] for p in (PROJECT / s).rglob("*")
+                           if p.is_file() and p.suffix in (".md", ".txt")]
+    for t in texts:
+        assert not [m for m in missing if re.search(rf"\b{m}\b", t)]
+    # Every tool shown in call form in the instruction is a harness tool the root has, or a skill tool.
+    called = set(re.findall(r"\b([a-z_]+)\(", _prompt()))
+    skill_tools = {"load_skill", "run_skill_script", "load_skill_resource", "list_skills"}
+    assert {c for c in called if c in rules.HARNESS_TOOLS or c in skill_tools} <= set(root["tools"]) | skill_tools
+
+
+def test_package_differs_from_r015_only_by_the_architecture_change(tmp_path: Path):
+    """(from test_r015) Package R016 and the evaluated R015 build; every other file must be byte-identical."""
+    import sys
+    r015 = tmp_path / "r015"
+    subprocess.run(["git", "worktree", "add", "-q", "--detach", str(r015), R015_REV], cwd=PROJECT, check=True)
+    try:
+        builds = {}
+        for name, src in (("r016", PROJECT), ("r015", r015)):
+            out = tmp_path / f"{name}_build"
+            r = subprocess.run([sys.executable, "-c",
+                                f"import sys; sys.path.insert(0, {str(src / 'src')!r});"
+                                f"from g4agent.packager import package; from pathlib import Path;"
+                                f"raise SystemExit(package(None, Path({str(tmp_path / (name + '.zip'))!r}),"
+                                f" compile_adk=False, keep_build=Path({str(out)!r})))"], capture_output=True, text=True)
+            assert r.returncode == 0, r.stdout + r.stderr
+            builds[name] = {p.relative_to(out).as_posix(): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+        new, old = builds["r016"], builds["r015"]
+        assert not set(new) - set(old)                                    # nothing added
+        assert sorted(k for k in new if new[k] != old[k]) == ["agent.yaml", "prompts/system.md"]
+        removed = sorted(set(old) - set(new))
+        assert removed and all(r.startswith(("sub_agents/", "skills/repo-navigation-readonly/")) or
+                               r in ("prompts/localizer.md", "configs/localizer_sampling.yaml") for r in removed), removed
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", str(r015)], cwd=PROJECT, check=False)
+
+
+def test_rendered_instruction_keeps_locate_repair_edit_verify_order(repo: Path, tmp_path: Path):
+    """(from test_r014) The instruction the model actually receives has the steps in order and no plan slot."""
+    _, llm = _run([FIND, ("submit_patch", {}), "Done."], repo, tmp_path)
+    sys_text = str(llm.seen_requests[0].config.system_instruction)
+    idx = [sys_text.index(s) for s in ("2. LOCATE", "3. REPAIR FIRST", "5. EDIT.", "cat > /tmp/repro.py", "7. REVIEW")]
+    assert idx == sorted(idx) and "{repair_plan" not in sys_text and "Start from" not in sys_text
