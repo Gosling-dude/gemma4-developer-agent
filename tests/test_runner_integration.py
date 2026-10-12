@@ -56,18 +56,18 @@ def _contents_text(request) -> str:
 
 
 def test_single_agent_end_to_end_with_scripted_model(repo: Path, tmp_path: Path):
-    """Packaged R016 tree: one coder agent receives the harness task message, locates, edits, tests, reviews, submits."""
+    """Packaged single-agent tree (R016/R017): the harness task message, grep, read, edit, targeted test, diff, submit."""
     build = tmp_path / "build"
     assert package(None, tmp_path / "s.zip", compile_adk=False, keep_build=build) == 0
     task = Task("toy_1", "local/toy", "HEAD", "clamp() returns the lower bound for values above `high`.")
     steps = [
-        ("run_skill_script", {"skill_name": "repo-navigation", "file_path": "scripts/nav.py", "args": ["find", "clamp"]}),
+        ("run_command", {"command": "git grep -n 'def clamp' -- '*.py' | head -20"}),
+        ("read_file", {"filepath": "pkg/mathutil.py", "start_line": 1, "end_line": 20}),
         ("edit_file", {"filepath": "pkg/mathutil.py", "old_string": "return low  # BUG: should return high",
                        "new_string": "return high"}),
-        ("run_skill_script", {"skill_name": "test-discovery", "file_path": "scripts/tests.py",
-                              "args": ["run", "tests/test_mathutil.py"]}),
+        ("run_command", {"command": "python3 -m pytest -q tests/test_mathutil.py"}),
         "I think I'm done.",                      # text-only turn -> harness nudge -> the same agent continues
-        ("run_skill_script", {"skill_name": "debugging", "file_path": "scripts/review.py", "args": []}),
+        ("run_command", {"command": "git diff --stat"}),
         ("submit_patch", {}),
         "Fixed clamp upper bound.",
     ]
@@ -81,9 +81,9 @@ def test_single_agent_end_to_end_with_scripted_model(repo: Path, tmp_path: Path)
     assert outcome.nudges_sent == 1
     events = [json.loads(l) for l in trace.read_text().splitlines()]
     responses = [r for e in events for r in e.get("responses", [])]
-    runs = [r for r in responses if r["name"] == "run_skill_script"]
-    assert "pkg/mathutil.py" in runs[0]["response"] and "DEFINITIONS" in runs[0]["response"]
-    assert "ALL SELECTED TESTS PASSED" in runs[1]["response"] and "VERDICT: READY" in runs[2]["response"]
+    runs = [r for r in responses if r["name"] == "run_command"]
+    assert "pkg/mathutil.py" in runs[0]["response"] and "def clamp" in runs[0]["response"]
+    assert "3 passed" in runs[1]["response"] and "mathutil.py" in runs[2]["response"]
 
     reqs = llm.seen_requests
     assert reqs and all(_agent_of(r) == "coder" for r in reqs)          # one agent, no localizer stage
@@ -92,9 +92,9 @@ def test_single_agent_end_to_end_with_scripted_model(repo: Path, tmp_path: Path)
     assert "Problem Statement:" in _contents_text(first) and "## Workspace Layout" in _contents_text(first)
     assert "clamp() returns the lower bound" in _contents_text(first)
     sys_text = str(first.config.system_instruction)
-    assert "repair_plan" not in sys_text and "localizer" not in sys_text.lower() and "Start from" not in sys_text
+    assert "repair_plan" not in sys_text and "localizer" not in sys_text.lower()
     assert {"run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch",
             "get_code_neighbors", "search_similar_code", "get_code_subgraph",
             "load_skill", "run_skill_script"} <= set(first.tools_dict)
     # After the nudge the same agent keeps its history (its earlier tool output is still in context).
-    assert "DEFINITIONS" in _contents_text(reqs[-1])
+    assert "def clamp" in _contents_text(reqs[-1])

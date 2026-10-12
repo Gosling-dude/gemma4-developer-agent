@@ -478,7 +478,14 @@ def check_eval_config(root: Path, report: Report) -> None:
         msg = (f"worst case (every task hits the {minutes} min cap): {expected:.2f} h for "
                f"{rules.EXPECTED_TEST_TASKS} tasks, {bound:.2f} h for {rules.TEST_TASKS_UPPER_BOUND}, "
                f"of {rules.RUN_BUDGET_HOURS:.0f} h")
-        if bound > rules.RUN_BUDGET_HOURS:
+        calls = ev.get("max_tool_calls")
+        if bound > rules.RUN_BUDGET_HOURS and isinstance(calls, int) and not isinstance(calls, bool):
+            # swegemma 0.2.11 ends a session at max_tool_calls (agent_runner: "Agent exceeded tool call budget"), so a
+            # call-capped task can stop well before the time cap; only measured durations can show the total fits
+            # (R017: docs/r017.md). Without a call cap the time-cap worst case stays a hard error.
+            report.warn(msg + f" -> can exceed the run budget unless the {calls}-call cap ends most tasks early; "
+                        "require a measured full-run projection well under the budget before submitting")
+        elif bound > rules.RUN_BUDGET_HOURS:
             report.error(msg + " -> can EXCEED the run budget; exceeding it errors the whole submission")
         else:
             report.info.append(msg)

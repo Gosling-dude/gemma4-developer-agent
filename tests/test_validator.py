@@ -79,8 +79,8 @@ def test_unknown_tool(submission: Path):
 
 
 def test_skill_name_must_match_dir(submission: Path):
-    md = submission / "skills" / "debugging" / "SKILL.md"
-    md.write_text(md.read_text().replace("name: debugging", "name: debug-helper"))
+    md = submission / "skills" / "code-edit" / "SKILL.md"
+    md.write_text(md.read_text().replace("name: code-edit", "name: edit-helper"))
     assert any("must equal directory name" in e for e in errors_of(submission))
 
 
@@ -128,7 +128,8 @@ def test_closure_is_minimal(submission: Path):
     names = {p.relative_to(submission.resolve()).as_posix() for p in closure(tree)}
     assert "prompts/unused.md" not in names
     assert {"agent.yaml", "prompts/system.md", "configs/sampling.yaml", "eval_config.yaml",
-            "skills/repo-navigation/scripts/nav.py"} <= names
+            "skills/code-edit/scripts/edit.py"} <= names
+    assert not [n for n in names if n.startswith("skills/") and not n.startswith("skills/code-edit/")]  # R017
 
 
 def test_zip_with_nested_root_rejected(tmp_path: Path, submission: Path):
@@ -144,7 +145,7 @@ def test_zip_with_nested_root_rejected(tmp_path: Path, submission: Path):
 def test_skill_path_with_dotdot_rejected(submission: Path):
     """Official adk-submission rejects '..' in skill paths (lexical check), and skills are root-relative."""
     p = submission / "agent.yaml"
-    p.write_text(p.read_text().replace("  - skills/debugging", "  - prompts/../skills/debugging"))
+    p.write_text(p.read_text().replace("  - skills/code-edit", "  - prompts/../skills/code-edit"))
     assert any("'..' is not allowed in skill" in e for e in errors_of(submission))
 
 

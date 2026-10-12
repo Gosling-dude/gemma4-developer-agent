@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
+import subprocess
+
 from g4agent.packager import PROJECT, package
+
+
+def _v13_root(rel: str) -> str:
+    """The V1.3 root these variants were derived from (121bd79); the current root (R017) is a different agent."""
+    return subprocess.run(["git", "show", f"121bd79:{rel}"], cwd=PROJECT, capture_output=True, text=True, check=True).stdout
 
 V11_ZIP_SHA256 = "24b3fab0b3761fc52fc036bee60b3fdaf571ff58c277cd4f058b839454af0f2a"  # tag v1.1-baseline
 
@@ -46,7 +53,7 @@ def _edit_step(text: str) -> str:
 def test_v13_channel_is_v12_with_only_the_edit_step_changed():
     v12 = (PROJECT / "variants/v1_2/prompts/system.md").read_text()
     chan = (PROJECT / "variants/v13_channel/prompts/system.md").read_text()
-    root = (PROJECT / "prompts/system.md").read_text()
+    root = _v13_root("prompts/system.md")
     assert _edit_step(chan) == _edit_step(root) != _edit_step(v12)
     assert chan.replace(_edit_step(chan), "") == v12.replace(_edit_step(v12), "")
     assert {p.relative_to(PROJECT / "variants/v13_channel").as_posix()
@@ -60,6 +67,6 @@ def test_single_change_variants_differ_only_in_eval_config():
     assert files(v11) == files(budget)
     changed = {f for f in files(v11) if (v11 / f).read_bytes() != (budget / f).read_bytes()}
     assert changed == {"eval_config.yaml"}
-    assert (budget / "eval_config.yaml").read_text() == (PROJECT / "eval_config.yaml").read_text()
+    assert (budget / "eval_config.yaml").read_text() == _v13_root("eval_config.yaml")
     assert files(PROJECT / "variants/v12_v11budget") == {"eval_config.yaml"}
     assert (PROJECT / "variants/v12_v11budget/eval_config.yaml").read_text() == (v11 / "eval_config.yaml").read_text()

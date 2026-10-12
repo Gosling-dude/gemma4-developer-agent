@@ -34,5 +34,5 @@ def test_package_is_deterministic_and_minimal(tmp_path: Path):
     names = set(zipfile.ZipFile(a).namelist())
     assert "sub_agents/code_analyzer.yaml" not in names          # unreferenced in V1
     assert "prompts/system_v2.md" not in names
-    assert "skills/debugging/resources/failure_taxonomy.md" in names  # references/ mirrored
-    assert "skills/debugging/references/failure_taxonomy.md" in names
+    assert "skills/code-edit/scripts/edit.py" in names            # R017: the only referenced skill
+    assert not [n for n in names if n.startswith(("skills/debugging/", "skills/repo-navigation/", "skills/test-discovery/"))]
