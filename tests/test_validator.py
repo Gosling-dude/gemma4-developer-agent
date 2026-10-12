@@ -67,13 +67,13 @@ def test_problem_description_placeholder_ok(submission: Path):
 
 
 def test_wrong_model(submission: Path):
-    p = submission / "sub_agents" / "coder.yaml"
+    p = submission / "agent.yaml"
     p.write_text(p.read_text().replace("gemma-4-31b-it-qat-w4a16-ct", "gemma-4-31b-it"))
     assert any("not allowed" in e for e in errors_of(submission))
 
 
 def test_unknown_tool(submission: Path):
-    p = submission / "sub_agents" / "coder.yaml"
+    p = submission / "agent.yaml"
     p.write_text(p.read_text().replace("  - get_status\n", "  - get_status\n  - web_search\n"))
     assert any("web_search" in e for e in errors_of(submission))
 
@@ -117,7 +117,7 @@ def test_unsafe_time_cap_is_an_error(submission: Path):
 
 
 def test_missing_adapter(submission: Path):
-    p = submission / "sub_agents" / "coder.yaml"  # an LLM agent (the R012 root is a SequentialAgent)
+    p = submission / "agent.yaml"  # the R016 root is the LLM agent
     p.write_text(p.read_text() + "adapter: main_lora\n")
     assert any("adapter" in e for e in errors_of(submission))
 
@@ -143,7 +143,7 @@ def test_zip_with_nested_root_rejected(tmp_path: Path, submission: Path):
 
 def test_skill_path_with_dotdot_rejected(submission: Path):
     """Official adk-submission rejects '..' in skill paths (lexical check), and skills are root-relative."""
-    p = submission / "sub_agents" / "coder.yaml"
+    p = submission / "agent.yaml"
     p.write_text(p.read_text().replace("  - skills/debugging", "  - prompts/../skills/debugging"))
     assert any("'..' is not allowed in skill" in e for e in errors_of(submission))
 

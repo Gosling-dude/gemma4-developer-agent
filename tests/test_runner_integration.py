@@ -55,23 +55,18 @@ def _contents_text(request) -> str:
     return " ".join(str(p.text or "") + str(p.function_response or "") for c in request.contents for p in c.parts)
 
 
-def test_r012_handoff_end_to_end_with_scripted_model(repo: Path, tmp_path: Path):
-    """Packaged R012 tree: read-only localizer -> repair_plan -> V1.3 coder edits, tests, reviews, submits."""
+def test_single_agent_end_to_end_with_scripted_model(repo: Path, tmp_path: Path):
+    """Packaged R016 tree: one coder agent receives the harness task message, locates, edits, tests, reviews, submits."""
     build = tmp_path / "build"
     assert package(None, tmp_path / "s.zip", compile_adk=False, keep_build=build) == 0
     task = Task("toy_1", "local/toy", "HEAD", "clamp() returns the lower bound for values above `high`.")
     steps = [
-        # stage 1: localizer
-        ("run_skill_script", {"skill_name": "repo-navigation-readonly", "file_path": "scripts/nav.py",
-                              "args": ["find", "clamp"]}),
-        PLAN,
-        # stage 2: coder
+        ("run_skill_script", {"skill_name": "repo-navigation", "file_path": "scripts/nav.py", "args": ["find", "clamp"]}),
         ("edit_file", {"filepath": "pkg/mathutil.py", "old_string": "return low  # BUG: should return high",
                        "new_string": "return high"}),
         ("run_skill_script", {"skill_name": "test-discovery", "file_path": "scripts/tests.py",
                               "args": ["run", "tests/test_mathutil.py"]}),
-        "I think I'm done.",                      # text-only turn -> harness nudge -> the sequence restarts
-        PLAN,                                     # localizer, second pass: repeats the plan, no tool call
+        "I think I'm done.",                      # text-only turn -> harness nudge -> the same agent continues
         ("run_skill_script", {"skill_name": "debugging", "file_path": "scripts/review.py", "args": []}),
         ("submit_patch", {}),
         "Fixed clamp upper bound.",
@@ -86,51 +81,20 @@ def test_r012_handoff_end_to_end_with_scripted_model(repo: Path, tmp_path: Path)
     assert outcome.nudges_sent == 1
     events = [json.loads(l) for l in trace.read_text().splitlines()]
     responses = [r for e in events for r in e.get("responses", [])]
-    nav = next(r for r in responses if r["name"] == "run_skill_script")
-    assert "pkg/mathutil.py" in nav["response"] and "DEFINITIONS" in nav["response"]
-    test_run = [r for r in responses if r["name"] == "run_skill_script"][1]
-    assert "ALL SELECTED TESTS PASSED" in test_run["response"]
-    review = [r for r in responses if r["name"] == "run_skill_script"][2]
-    assert "VERDICT: READY" in review["response"]
-    first_user = events[0]["text"]
-    assert "Problem Statement:" in first_user and "## Workspace Layout" in first_user
+    runs = [r for r in responses if r["name"] == "run_skill_script"]
+    assert "pkg/mathutil.py" in runs[0]["response"] and "DEFINITIONS" in runs[0]["response"]
+    assert "ALL SELECTED TESTS PASSED" in runs[1]["response"] and "VERDICT: READY" in runs[2]["response"]
 
     reqs = llm.seen_requests
-    assert [_agent_of(r) for r in reqs] == ["localizer", "localizer", "coder", "coder", "coder",
-                                            "localizer", "coder", "coder", "coder"]
-    loc, coder = reqs[0], reqs[2]
-    # Localizer: read-only tool set; sees the harness prompt (issue); first pass has no earlier plan.
-    assert set(loc.tools_dict) == {"read_file", "get_status", "get_code_neighbors", "search_similar_code",
-                                   "get_code_subgraph", "list_skills", "load_skill", "load_skill_resource",
-                                   "run_skill_script"}
-    assert "Problem Statement:" in _contents_text(loc)
-    assert "Plan from an earlier pass: \n" in str(loc.config.system_instruction)
-    # Coder: V1.3 tools; issue and plan arrive through its instruction; the localizer's tool output does not.
-    assert {"run_command", "edit_file", "write_file", "submit_patch"} <= set(coder.tools_dict)
-    coder_sys = str(coder.config.system_instruction)
-    assert "clamp() returns the lower bound" in coder_sys and "Start from FILE: pkg/mathutil.py" in coder_sys
-    assert "DEFINITIONS" not in _contents_text(coder) and "Problem Statement:" not in _contents_text(coder)
-    # Nudge: the localizer re-runs with its plan in the instruction (it repeats it without tool calls).
-    assert "Plan from an earlier pass: FILE: pkg/mathutil.py" in str(reqs[5].config.system_instruction)
-
-
-def test_r012_coder_works_without_a_usable_plan(repo: Path, tmp_path: Path):
-    """A malformed or empty localizer reply must not stop the coder from locating and fixing on its own."""
-    build = tmp_path / "build"
-    assert package(None, tmp_path / "s.zip", compile_adk=False, keep_build=build) == 0
-    task = Task("toy_1", "local/toy", "HEAD", "clamp() returns the lower bound for values above `high`.")
-    steps = [
-        "I could not",                            # localizer: malformed plan, no tool calls
-        ("run_skill_script", {"skill_name": "repo-navigation", "file_path": "scripts/nav.py",
-                              "args": ["find", "clamp"]}),
-        ("edit_file", {"filepath": "pkg/mathutil.py", "old_string": "return low  # BUG: should return high",
-                       "new_string": "return high"}),
-        ("submit_patch", {}),
-        "Fixed.",
-    ]
-    llm = ScriptedLlm(model="scripted", steps=list(steps), seen_requests=[])
-    outcome = asyncio.run(run_agent(build, task, repo, tmp_path / "tmp", Budget(tool_calls=40, time_minutes=2),
-                                    None, _env(repo), tmp_path / "t.jsonl", model_factory=lambda *_: llm))
-    assert outcome.stop_reason == "submitted" and "return high" in outcome.patch, outcome
-    coder = llm.seen_requests[1]
-    assert _agent_of(coder) == "coder" and "Start from I could not" in str(coder.config.system_instruction)
+    assert reqs and all(_agent_of(r) == "coder" for r in reqs)          # one agent, no localizer stage
+    first = reqs[0]
+    # The issue, budget and workspace tree arrive in the harness message itself (include_contents default).
+    assert "Problem Statement:" in _contents_text(first) and "## Workspace Layout" in _contents_text(first)
+    assert "clamp() returns the lower bound" in _contents_text(first)
+    sys_text = str(first.config.system_instruction)
+    assert "repair_plan" not in sys_text and "localizer" not in sys_text.lower() and "Start from" not in sys_text
+    assert {"run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch",
+            "get_code_neighbors", "search_similar_code", "get_code_subgraph",
+            "load_skill", "run_skill_script"} <= set(first.tools_dict)
+    # After the nudge the same agent keeps its history (its earlier tool output is still in context).
+    assert "DEFINITIONS" in _contents_text(reqs[-1])

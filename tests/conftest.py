@@ -15,7 +15,7 @@ def project() -> Path:
 
 @pytest.fixture
 def submission(tmp_path: Path) -> Path:
-    """A copy of the real submission sources (root: R012 localizer -> V1.3 coder) that tests can mutate."""
+    """A copy of the real submission sources (root: R016 single coder agent) that tests can mutate."""
     dest = tmp_path / "sub"
     dest.mkdir()
     for entry in ("agent.yaml", "eval_config.yaml", "configs", "prompts", "skills", "sub_agents"):
@@ -24,9 +24,7 @@ def submission(tmp_path: Path) -> Path:
             shutil.copytree(src, dest / entry, ignore=shutil.ignore_patterns("__pycache__", ".*"))
         else:
             shutil.copy2(src, dest / entry)
-    for p in (dest / "sub_agents").iterdir():  # only the R012 two-stage files are referenced by the root
-        if p.name not in ("localizer.yaml", "coder.yaml"):
-            p.unlink()
+    shutil.rmtree(dest / "sub_agents")  # R016: the root references no sub-agent (older variant files only)
     for p in ("repository_analyzer.md", "patch_reviewer.md", "test_analyzer.md", "debugger.md", "system_v2.md"):
         (dest / "prompts" / p).unlink()
     return dest

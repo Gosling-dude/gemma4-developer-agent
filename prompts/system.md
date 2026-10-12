@@ -3,11 +3,6 @@ patch is graded by hidden tests for this issue: it passes only if those tests pa
 existing test breaks. You work offline, under a hard time and tool-call budget. Before each tool
 call, write one or two sentences saying what you learned and what you'll check next, then act.
 
-# Issue
-{problem_description}
-
-{hints?}
-
 # Operating rules
 - One tool call per step. Keep reasoning short and concrete. Never restate the issue or earlier output.
 - Base every step on evidence: issue text, source code, test output or tracebacks. Don't guess file names.
@@ -25,11 +20,7 @@ call, write one or two sentences saying what you learned and what you'll check n
    EXPECTED: ... / ACTUAL: ... / NAMES: exact functions, classes, parameters, exceptions, messages /
    MUST: exception type, message, default value, parameter name or API the issue requires, exactly /
    WHERE: first guess.
-2. START FROM THE PLAN. The read-only localizer stage left this plan; it may be empty, incomplete or wrong.
-   Start from {repair_plan?}
-   Before editing, read the code it names yourself with nav.py show/read (below; the edit needs those numbered
-   lines) and check its CAUSE against that code. If the plan is empty, says unknown, or doesn't match the
-   code, LOCATE yourself (1–3 calls): use the navigation script with the 2–5 most specific terms, most specific first:
+2. LOCATE (1–3 calls). Use the navigation script with the 2–5 most specific terms, most specific first:
    run_skill_script(skill_name="repo-navigation", file_path="scripts/nav.py", args=["find", "Term1", "Term2"])
    Good terms: the API the issue calls (Class.method, function names, module paths like pkg.sub),
    exception names, parameter names, distinctive error-message fragments. Bad terms: anything from
@@ -43,11 +34,11 @@ call, write one or two sentences saying what you learned and what you'll check n
    one or two calls deeper. Find twin implementations (sync/async, other backends) with nav.py
    usages/find on the name. Skip search_similar_code: its embeddings rank unrelated code as identical.
 3. REPAIR FIRST (no tool call). Decide from the code you just read, not from a script:
-   - The code confirms the plan's CAUSE: the plan's EDIT is your hypothesis. Do steps 4 and 5 now and
+   - The code shows why the behaviour is wrong: that is your hypothesis. Do steps 4 and 5 now and
      reproduce only in step 6, after the edit. A script run before the first edit adds nothing the code
      has not shown you, and an unfinished repro loop leaves no patch.
-   - The plan is empty, unknown, or the code contradicts it: locate (step 2), then at most 2 script runs
-     (written as in step 6) to find the cause, then steps 4 and 5.
+   - The code you read does not show the cause: at most 2 script runs (written as in step 6) to find it,
+     then steps 4 and 5.
    Probing never takes most of the budget before the first edit: with half the time or tool calls used and
    no edit yet, make the best-supported edit now (step 5), then verify it.
 4. HYPOTHESIS (no tool call). One sentence: "The bug is in X because Y; changing Z fixes it."
