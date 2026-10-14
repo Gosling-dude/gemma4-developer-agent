@@ -1,8 +1,9 @@
-"""R017: a faithful adaptation of the Budget-Fit single agent (reference archive members byte-match the bundle
-independently reproduced at 0.18 public; docs/r017.md), plus our code-edit skill as the safe-edit fallback.
+"""R018: the contract-first single agent (honghanhhh "Gemma 4 Baseline | LB 0.24", archive 9387949b...; Kaggle badge
+0.18 public) on R017's unchanged budget and sampling bytes, keeping R017's code-edit fallback with its trigger corrected
+to the edit_file failure the R017 traces show (docs/r018.md).
 
-The retired R016 module tested R016's own configuration (R015 coder prompt lineage); this module carries the
-still-applicable protections (single root, R013 tool guard, thinking, scripted edit runs, enforced budgets).
+Replaces the R017 module; carries its still-applicable protections (single root, R013 tool guard, thinking, enforced
+budgets, scripted real-ADK runs).
 """
 
 import asyncio
@@ -22,20 +23,23 @@ from g4agent.validator import validate_dir
 
 from test_runner_integration import ScriptedLlm, _agent_of, _env
 
-# Member sha256 of the Budget-Fit archive (verracodeguacas output, sha256 1cb73986...); identical to the members the
-# independent reproduction (dmitriigluzdov, "Measure Before You Tune", QUICK_FILES) rebuilt and scored at 0.18.
+# Budget-Fit members kept byte-identical since R017 (also the bytes inside the contract-first reference archive).
 REFERENCE = {
     "configs/sampling.yaml": "571a934e89911734927533f1d36cbcc7b8d493592febe63b217e911cf7ed4926",
     "eval_config.yaml": "916cf6cb34a6cc3de39837fa72cac681599b9ac2a3ee0b893adadfd36474c531",
-    "prompts/system.md": "475cc9b7fcc0dc295532f5cb5e1928f26a491f501837ad08b1c79bdbe1a3eaa4",
 }
-REFERENCE_TOOLS = ["run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch",
-                   "get_code_neighbors", "search_similar_code", "get_code_subgraph"]
+# prompts/system.md of the contract-first archive 9387949b... (copy: research/kaggle/r018_reference/system.md).
+CONTRACT_FIRST_PROMPT_SHA256 = "7163e6644c452adc551a50a23f70087361415c78b7935b90a3614b5c9a94ba90"
+REFERENCE_TOOLS = ["run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch"]
+GRAPH_TOOLS = {"get_code_neighbors", "search_similar_code", "get_code_subgraph"}
 CODE_EDIT_SHA256 = {  # our safe-edit mechanism, unchanged since V1.3 (121bd79)
     "skills/code-edit/SKILL.md": "122c970c0ec7622e09cc16af1b9c53ba2384274cdd9d0b3eaa970dab13e4ab9d",
     "skills/code-edit/scripts/edit.py": "13a38363c69cb514356c47a03ebff31bb10e2df63cd438a5602d65b2aead5787",
 }
-FALLBACK_ANCHOR = "- For documentation code tasks (e.g. FastAPI), edit executable code under `docs_src/`.\n"
+FALLBACK_ANCHOR = ("- Prefer `edit_file`. `old_string` must match the file exactly, including indentation. "
+                   "Change the smallest span that implements the contract.\n")
+# The error google-adk returns when Gemma's call drops old_string (21/54 R017 edit_file calls; docs/r018.md).
+MISSING_PARAM_ERROR = "mandatory input parameters are not present"
 
 
 def _sha(b: bytes) -> str:
@@ -50,10 +54,15 @@ def _prompt() -> str:
     return (PROJECT / "prompts/system.md").read_text()
 
 
-# --------------------------------------------------------------------------- fidelity to the reproduced reference
+def _fallback_bullet(text: str) -> tuple[int, int]:
+    i = text.index(FALLBACK_ANCHOR) + len(FALLBACK_ANCHOR)
+    return i, text.index("\n", i) + 1
 
 
-def test_sampling_and_budgets_are_the_reference_bytes():
+# ------------------------------------------------------------------------------- fidelity to the references
+
+
+def test_sampling_and_budgets_are_unchanged_from_r017():
     for rel in ("configs/sampling.yaml", "eval_config.yaml"):
         assert _sha((PROJECT / rel).read_bytes()) == REFERENCE[rel], rel
     ev = yaml.safe_load((PROJECT / "eval_config.yaml").read_text())["evaluation"]
@@ -62,13 +71,28 @@ def test_sampling_and_budgets_are_the_reference_bytes():
     assert s["thinking_config"] == {"thinking_budget": 4096, "include_thoughts": True} and s["temperature"] == 0.2
 
 
-def test_prompt_is_the_reference_plus_one_fallback_bullet():
+def test_prompt_is_the_contract_first_reference_plus_one_fallback_bullet():
     text = _prompt()
-    i = text.index(FALLBACK_ANCHOR) + len(FALLBACK_ANCHOR)
-    j = text.index("\n", i) + 1
-    bullet = text[i:j]
-    assert bullet.startswith("- If `edit_file` fails twice") and '"replace"' in bullet
-    assert _sha((text[:i] + text[j:]).encode()) == REFERENCE["prompts/system.md"]
+    i, j = _fallback_bullet(text)
+    assert _sha((text[:i] + text[j:]).encode()) == CONTRACT_FIRST_PROMPT_SHA256
+    assert _sha((text[:i] + text[j:]).encode()) == _sha((PROJECT / "research/kaggle/r018_reference/system.md").read_bytes())
+
+
+def test_fallback_bullet_triggers_on_the_observed_missing_parameter_error():
+    """R017's bullet fired only on 'old_string not found'; the traces show the missing-parameter error instead."""
+    i, j = _fallback_bullet(_prompt())
+    bullet = _prompt()[i:j]
+    assert MISSING_PARAM_ERROR in bullet and "do not resend it" in bullet
+    assert '"replace"' in bullet and "@/tmp/old.txt" in bullet and "<<'EOF'" in bullet
+
+
+def test_contract_first_rules_are_present():
+    text = _prompt()
+    for rule in ("Copy them character for character", "Edit by tool call 12", "at most 120 lines",
+                 "Any scratch script goes in `/tmp`", "One check, one repair, then submit",
+                 "You have 28 tool calls and 8 minutes"):
+        assert rule in text, rule
+    assert not GRAPH_TOOLS & set(text.split("`"))          # the prompt no longer mentions the graph tools
 
 
 def test_root_is_the_reference_single_agent_with_code_edit():
@@ -77,6 +101,9 @@ def test_root_is_the_reference_single_agent_with_code_edit():
     assert "include_contents" not in root                      # receives the harness task message
     assert root["model"] == "gemma-4-31b-it-qat-w4a16-ct"
     assert root["tools"] == REFERENCE_TOOLS and root["skills"] == ["skills/code-edit"]
+    ref = yaml.load((PROJECT / "research/kaggle/r018_reference/agent.yaml").read_text().replace("!include ", ""),
+                    Loader=yaml.SafeLoader)
+    assert root["tools"] == ref["tools"] and root["model"] == ref["model"]
     for rel, sha in CODE_EDIT_SHA256.items():
         assert _sha((PROJECT / rel).read_bytes()) == sha, rel
 
@@ -120,9 +147,7 @@ def test_guard_rejects_a_skill_that_names_a_tool_the_agent_lacks(submission: Pat
     assert any("names tool 'run_command'" in e for e in validate_dir(submission).errors)
 
 
-def test_guard_rejects_a_call_to_a_missing_tool_in_the_instruction(submission: Path):
-    p = submission / "agent.yaml"
-    p.write_text(p.read_text().replace("  - get_code_subgraph\n", ""))
+def test_guard_rejects_a_call_to_an_unregistered_graph_tool_in_the_instruction(submission: Path):
     (submission / "prompts" / "system.md").write_text(_prompt() + '\nThen call get_code_subgraph(["a", "b"]).\n')
     assert any("instruction shows a call to 'get_code_subgraph'" in e for e in validate_dir(submission).errors)
 
@@ -155,7 +180,7 @@ def test_contract_flow_grep_read_edit_test_submit(repo: Path, tmp_path: Path):
     outcome, llm = _run(steps, repo, tmp_path)
     assert outcome.stop_reason == "submitted" and "return high" in outcome.patch
     assert all(_agent_of(r) == "coder" for r in llm.seen_requests)
-    assert "Budget: 28 tool calls, 8 minutes" in str(llm.seen_requests[0].config.system_instruction)
+    assert "You have 28 tool calls and 8 minutes" in str(llm.seen_requests[0].config.system_instruction)
 
 
 def test_edit_file_failure_falls_back_to_code_edit_replace(repo: Path, tmp_path: Path):
@@ -194,3 +219,47 @@ def test_an_undeclared_tool_call_is_not_silently_accepted_locally(repo: Path, tm
     """Our local runner (no harness ToolErrorPlugin) ends on an unknown tool; the official harness returns an error."""
     outcome, _ = _run([("apply_patch", {"diff": "x"})], repo, tmp_path)
     assert outcome.stop_reason == "agent_error" and "apply_patch" in outcome.error and not outcome.patch
+
+
+# ------------------------------------------------------------------- R018 intervention (scripted, real google-adk)
+
+FALLBACK_STEPS = [
+    ("run_command", {"command": "cat > /tmp/old.txt <<'EOF'\n        return low  # BUG: should return high\nEOF"}),
+    ("run_command", {"command": "cat > /tmp/new.txt <<'EOF'\n        return high\nEOF"}),
+    ("run_skill_script", {"skill_name": "code-edit", "file_path": "scripts/edit.py",
+                          "args": ["replace", "pkg/mathutil.py", "@/tmp/old.txt", "@/tmp/new.txt"]}),
+]
+
+
+def _responses(llm, name: str) -> list[str]:
+    return [str(p.function_response.response) for r in llm.seen_requests for c in r.contents for p in c.parts
+            if p.function_response and p.function_response.name == name]
+
+
+def test_malformed_edit_file_returns_the_error_the_bullet_names_then_code_edit_lands_the_fix(repo: Path, tmp_path: Path):
+    """The R017 failure shape: Gemma's call keeps filepath/new_string but loses old_string (rich_3063 resent it 9x).
+
+    google-adk answers with the missing-parameter error the R018 bullet keys on; one switch to code-edit `replace`
+    (single-string run_command payloads, which never malformed in R016/R017) lands the fix.
+    """
+    malformed = ("edit_file", {"filepath": "pkg/mathutil.py",
+                               "new_string": 'return high",old_string:\'return low  # BUG: should return high'})
+    outcome, llm = _run([GREP, READ, malformed, *FALLBACK_STEPS, TEST, ("submit_patch", {}), "Fixed."], repo, tmp_path)
+    edit_errors = _responses(llm, "edit_file")
+    assert edit_errors and MISSING_PARAM_ERROR in edit_errors[0] and "old_string" in edit_errors[0]
+    i, j = _fallback_bullet(_prompt())
+    assert MISSING_PARAM_ERROR in _prompt()[i:j]                          # the trigger text is what ADK returns
+    assert outcome.stop_reason == "submitted" and "+        return high" in outcome.patch
+    assert any("EDITED pkg/mathutil.py" in x for x in _responses(llm, "run_skill_script"))
+
+
+def test_scratch_in_tmp_stays_out_of_the_patch_but_workspace_scratch_does_not(repo: Path, tmp_path: Path):
+    """submit_patch stages untracked files (git add -N .), as swegemma 0.2.11 does: the prompt's /tmp rule matters."""
+    fix = ("edit_file", {"filepath": "pkg/mathutil.py", "old_string": BUG, "new_string": "return high"})
+    tmp_repro = ("run_command", {"command": "cat > /tmp/repro.py <<'EOF'\nprint('x')\nEOF\npython3 /tmp/repro.py"})
+    clean, _ = _run([GREP, READ, fix, tmp_repro, ("submit_patch", {}), "Fixed."], repo, tmp_path)
+    assert clean.stop_reason == "submitted" and "repro.py" not in clean.patch and "return high" in clean.patch
+    subprocess.run(["git", "checkout", "--", "."], cwd=repo, check=True)
+    ws_repro = ("write_file", {"filepath": "repro.py", "content": "print('x')\n"})
+    dirty, _ = _run([GREP, READ, fix, ws_repro, ("submit_patch", {}), "Fixed."], repo, tmp_path / "dirty")
+    assert "repro.py" in dirty.patch
