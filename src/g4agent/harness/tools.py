@@ -67,8 +67,16 @@ class LocalHarness:
 
     # ------------------------------------------------------------------ session / budget
 
+    # swegemma.harness.container_setup.setup_git_exclude: appended to /workspace/.git/info/exclude before the agent runs.
+    GIT_EXCLUDE = "__pycache__/\n*.pyc\n.pytest_cache/\n*.egg-info/\nbuild/\ndist/\n.coverage\n.adk_exec_*.py\n"
+
     def start(self) -> None:
         self.agent_start = time.monotonic()
+        info = self.workspace / ".git" / "info"
+        if (self.workspace / ".git").is_dir():
+            info.mkdir(parents=True, exist_ok=True)
+            with (info / "exclude").open("a") as fh:
+                fh.write(self.GIT_EXCLUDE)
 
     def elapsed(self) -> float:
         return 0.0 if self.agent_start is None else time.monotonic() - self.agent_start
@@ -121,14 +129,18 @@ class LocalHarness:
         return command
 
     def _path(self, filepath: str) -> Path:
+        """Resolve a tool path strictly inside the workspace, as swegemma's _resolve_workspace_path does.
+
+        Any other absolute path ("/tmp/repro.py" included) and any ".." escape are rejected with the harness's own
+        message. The rejected call has already been counted (R018: 15 such write_file calls in 14/24 tasks).
+        """
         fp = filepath.strip()
-        for prefix in ("/workspace/", "/workspace"):
-            if fp.startswith(prefix):
-                fp = fp[len(prefix):]
-                break
-        fp = fp.lstrip("/")
-        if ".." in Path(fp).parts:
-            raise ValueError(f"path traversal not allowed: {filepath}")
+        if fp == "/workspace":
+            fp = ""
+        elif fp.startswith("/workspace/"):
+            fp = fp[len("/workspace/"):]
+        if fp.startswith("/") or not (self.workspace / fp).resolve().is_relative_to(self.workspace):
+            raise ValueError(f"Path traversal detected: '{filepath}' escapes workspace root.")
         return self.workspace / fp
 
     def _sh(self, command: str, timeout: float) -> subprocess.CompletedProcess:
@@ -188,7 +200,10 @@ class LocalHarness:
         def read_file(filepath: str, start_line: int | None = None, end_line: int | None = None) -> str:
             """Reads a file from /workspace with 1-indexed inclusive line slicing (max 150 lines / 10000 chars)."""
             def go() -> str:
-                p = h._path(filepath)
+                try:
+                    p = h._path(filepath)
+                except ValueError as exc:
+                    return err("FileReadError", str(exc))
                 if not p.is_file():
                     return err("FileNotFoundError", f"File not found: {filepath}")
                 lines = p.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
@@ -211,7 +226,10 @@ class LocalHarness:
         def edit_file(filepath: str, old_string: str, new_string: str, allow_multiple: bool = False) -> str:
             """Replaces old_string with new_string in an existing non-empty file inside /workspace."""
             def go() -> str:
-                p = h._path(filepath)
+                try:
+                    p = h._path(filepath)
+                except ValueError as exc:
+                    return err("FileEditError", str(exc))
                 if not p.is_file():
                     return err("FileEditError", f"File does not exist: {filepath}")
                 text = p.read_text(encoding="utf-8").replace("\r\n", "\n")
@@ -237,7 +255,10 @@ class LocalHarness:
         def write_file(filepath: str, content: str) -> str:
             """Creates or overwrites a file at /workspace/<filepath>, creating parent directories."""
             def go() -> str:
-                p = h._path(filepath)
+                try:
+                    p = h._path(filepath)
+                except ValueError as exc:
+                    return err("FileWriteError", str(exc))   # swegemma: counted, then rejected
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding="utf-8")
                 return ok(filepath=str(p.relative_to(h.workspace)), size=len(content.encode()))

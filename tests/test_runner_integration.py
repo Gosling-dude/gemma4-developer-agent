@@ -95,7 +95,7 @@ def test_single_agent_end_to_end_with_scripted_model(repo: Path, tmp_path: Path)
     assert "repair_plan" not in sys_text and "localizer" not in sys_text.lower()
     assert {"run_command", "read_file", "edit_file", "write_file", "get_status", "submit_patch",
             "load_skill", "run_skill_script"} <= set(first.tools_dict)
-    # R018: the graph tools are not registered (as in the contract-first reference).
-    assert not {"get_code_neighbors", "search_similar_code", "get_code_subgraph"} & set(first.tools_dict)
+    # R019 = R017's agent.yaml: the 3 graph tools are registered (the prompt says not to use them; R017 never did).
+    assert {"get_code_neighbors", "search_similar_code", "get_code_subgraph"} <= set(first.tools_dict)
     # After the nudge the same agent keeps its history (its earlier tool output is still in context).
     assert "def clamp" in _contents_text(reqs[-1])
